@@ -28,6 +28,21 @@
     # design, not decided here.
     target.host = "root@152.53.92.126";
 
+    # WHICH IDENTITY THE INSTALLER/ACTIVATOR USES. ssh's default lookup would
+    # offer this workstation's own ~/.ssh/id_ed25519, which the target does NOT
+    # authorize — the host trusts the 1Password `dev` vault key only. The
+    # materialized vault key therefore has to be named explicitly.
+    #
+    # This is a WORKSTATION-LOCAL path (the key is `op inject`ed per use; see
+    # docs/install-netcup.md) — it is not a fact about the host, and it must be
+    # re-materialized on any other workstation that runs this.
+    target.sshOpts = [
+      "-i"
+      "/home/hbohlen/.ssh/id_ed25519-op-dev"
+      "-o"
+      "IdentitiesOnly=yes"
+    ];
+
     # hardware.nix is written by hand, not measured. disko derives every
     # fileSystems entry, and the only hardware facts this QEMU/KVM guest needs
     # are the VirtIO initrd modules (the previous BIOS-era deployment timed out

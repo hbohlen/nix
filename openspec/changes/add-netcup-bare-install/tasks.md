@@ -113,38 +113,38 @@
 
 ## 7. The install (irreversible)
 
-- [ ] 7.1 Run the single install command against the prepared target, with the
+- [x] 7.1 Run the single install command against the prepared target, with the
       recorded pre-flight output as the evidence that the run is against the
       intended host. Verify: the command completes and reboots the host.
-- [ ] 7.2 If the run is interrupted, inspect the reported phase and resume with
+- [x] 7.2 If the run is interrupted, inspect the reported phase and resume with
       `--phases` rather than restarting from the beginning blindly.
 
 ## 8. Post-install verification
 
-- [ ] 8.1 Verify key-only SSH login succeeds as the operator account over the
+- [x] 8.1 Verify key-only SSH login succeeds as the operator account over the
       target's public address.
-- [ ] 8.2 Verify root SSH succeeds with the same key, so later deploys have a
+- [x] 8.2 Verify root SSH succeeds with the same key, so later deploys have a
       path.
-- [ ] 8.3 Verify password authentication is refused for both accounts.
-- [ ] 8.4 Verify `nixos-version` reports the installed release and not the
+- [x] 8.3 Verify password authentication is refused for both accounts.
+- [x] 8.4 Verify `nixos-version` reports the installed release and not the
       installer's environment.
-- [ ] 8.5 Verify `/`, `/home`, `/nix` and `/var` are btrfs subvolumes `@`,
+- [x] 8.5 Verify `/`, `/home`, `/nix` and `/var` are btrfs subvolumes `@`,
       `@home`, `@nix`, `@var` mounted with `compress=zstd` and `noatime`, and
       that `swapon --show` is empty.
-- [ ] 8.6 Verify a clean reboot: reboot the host and confirm it returns to SSH
+- [x] 8.6 Verify a clean reboot: reboot the host and confirm it returns to SSH
       with no console interaction, and that `bootctl status` reports the booted
       entry.
 
 ## 9. Validation and follow-up
 
-- [ ] 9.1 Run `openspec validate add-netcup-bare-install --strict` and confirm
+- [x] 9.1 Run `openspec validate add-netcup-bare-install --strict` and confirm
       every requirement has a passing scenario result, with any boot-dependent
       scenario resolved by 8.x rather than assumed.
-- [ ] 9.2 Record the outcome against the open questions in `design.md`,
+- [x] 9.2 Record the outcome against the open questions in `design.md`,
       especially the `system.stateVersion` release and whether the freshly
       imaged OS's EFI variables affected the first boot.
 - [ ] 9.3 Archive the change and scaffold the two follow-ups it deliberately
       excludes: closing root login (which must also decide what replaces the
       deploy path) and adding tailnet access.
-- [ ] 9.4 Commit the work in the colocated jj/Git repository, one described
+- [x] 9.4 Commit the work in the colocated jj/Git repository, one described
       change per action.

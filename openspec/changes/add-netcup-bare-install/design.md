@@ -245,25 +245,47 @@ Every requirement maps to a check that a reviewer can run; the ones marked
 
 ## Open Questions
 
+**Resolved by the install run (2026-09-27, all three measured on the live host):**
+
+- **Does `devenv machines install` accept a target reachable only over public
+  IPv4 with root SSH?** YES. `./bin/devenv machines install netcup
+  --max-concurrent 1 --no-tui` completed in 347 s (5 m 47 s): kexec 44.0 s,
+  facter probe 2.0 s, disko 85.2 s, NixOS install 184 s, reboot 2.9 s. The
+  target kexec'd from Ubuntu 22.04.5 (kernel 5.15) straight into the NixOS
+  installer (kernel 6.1) — the version-comparison warning `sort: disorder:
+  5.15.0-194-generic` on the way is benign. No pre-pinned host key was needed:
+  no `install.secrets`, no `install.extraFiles`.
+- **Which `system.stateVersion`?** `26.11`, read from the Machine's own nixpkgs
+  rather than guessed. Confirmed by the booted host: `nixos-version` →
+  `26.11pre-git (Zokor)`, and `/proc/cmdline` names exactly the evaluated
+  system path `...-nixos-system-netcup-26.11pre-git/init`.
+- **Does the first boot land in systemd-boot, or in the provider's UEFI shell?**
+  systemd-boot — but via a path worth knowing. `bootctl status` reports
+  `Product: systemd-boot 261.2` with `Loader: └─/boot//EFI/BOOT/BOOTX64.EFI`,
+  i.e. the host boots from the **UEFI fallback binary**, not an NVRAM entry.
+  With `canTouchEfiVariables = false` there is no writable boot entry, so
+  `/boot/EFI/BOOT/BOOTX64.EFI` is load-bearing, not a convenience: remove it
+  and the host has nothing to boot. A reboot check confirmed a new boot_id
+  after 23 s with the systemd-boot menu never touched.
+
+**Still open:**
+
 - **What replaces the deploy path when root login closes?** Machines' `deploy`
   needs root SSH. Closing root login therefore also closes routine deploys. The
   options (a key-holding root confined to the tailnet, a dedicated deploy
   account the installer accepts, or keeping root-key SSH permanently) are a
   decision for the hardening change, but the install change is what creates the
-  debt, so it must be named now.
-- **Which release string does `system.stateVersion` get?** It must match the
-  Machine's own nixpkgs (devenv-nixpkgs/rolling), not a remembered release.
-  Read it from the first successful eval rather than guessing.
-- **Is a 1 GiB ESP the right size?** systemd-boot stores kernels there and the
-  previous build chose 1 GiB with a 10-generation limit. Nothing in this
-  milestone depends on the number; it is cheap to change before the first
-  install and expensive after.
-- **Does the freshly imaged OS's installer leave an EFI variable that changes
-  the boot order?** If the first boot lands in the provider's UEFI shell rather
-  than systemd-boot, that is a console-side fix discovered at the boot gate —
-  worth knowing before the window opens.
-- **Does `devenv machines install` accept a target whose only access is public
-  IPv4 with root SSH?** Half-answered 2026-09-27: root SSH over the public
-  address is measured green with the vault identity, so the access shape is
-  proven and only the install command itself remains unmeasured. The pre-flight
-  proves root SSH works; the install is the measurement.
+  debt, so it is named here. Note it is now *live* debt: the deployed host
+  accepts root key login from the tailnet-less public address.
+- **Is a 1 GiB ESP the right size?** Unchanged and still cheap only until the
+  next re-image. Measured after the install: `vda1` 1 GiB vfat at `/boot`,
+  holding one generation entry; the previous build chose 1 GiB with a
+  10-generation `configurationLimit`, which will not be tested until there are
+  10 generations to keep.
+- **Should the facter report be tracked?** `install` probes the host with
+  nixos-facter even though `hardware.facter = null`, and writes
+  `.machines/netcup/facter.json` (88 KB, `"virtualisation": "kvm"`). The config
+  does not consume it. It is gitignored rather than committed precisely so the
+  opt-out stays visible — if someone later switches `hardware.facter` to its
+  default path, a stale report sitting in the repository would silently become
+  part of the build.

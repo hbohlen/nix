@@ -40,9 +40,13 @@ context: |
   Netcup VPS, QEMU/KVM guest: 12 vCPU, 32 GiB RAM, one virtio boot disk
   (/dev/vda, 1 TiB), UEFI enabled in the provider panel, no nested
   virtualization (no /dev/kvm — never design a VM-based mechanism for this
-  host). Public IPv4 152.53.92.126. The operator wipes it to a fresh
-  Debian/Ubuntu with root SSH open before each install attempt; root SSH is the
-  one-time install path.
+  host). Public IPv4 152.53.92.126. AS OF 2026-09-27 THE HOST RUNS THE
+  DECLARED NIXOS (`26.11pre-git`, installed in one `devenv machines install`
+  in 347 s), so it is no longer disposable: changes to the disk layout now
+  require re-imaging it first, and the re-image flow is a fresh Debian/Ubuntu
+  with root SSH open. It boots from the UEFI fallback binary
+  /boot/EFI/BOOT/BOOTX64.EFI (canTouchEfiVariables = false), which is
+  load-bearing.
 
   IDENTITY
   The host identity is the 1Password `dev` vault item `SSH Key` — ed25519,

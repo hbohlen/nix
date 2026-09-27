@@ -138,6 +138,54 @@ environment; `/`, `/home`, `/nix`, `/var` are btrfs subvolumes `@`, `@home`,
 host returns to SSH with no console interaction — an unattended UEFI boot is
 the whole point of the layout.
 
+## Outcome of the first run (2026-09-27)
+
+Green, in 5 m 47 s total:
+
+```
+kexec                    44.0s   Ubuntu 22.04.5 (5.15) -> NixOS installer (6.1)
+facter probe              2.0s   writes .machines/netcup/facter.json (inert: hardware.facter = null)
+disko                    85.2s   /dev/vda destroyed, GPT + ESP + btrfs subvolumes created
+install                 184.0s   closure copied, systemd-boot written, 360.5 MiB / 105 paths
+reboot                    2.9s
+```
+
+Post-install: `nixos-version` → `26.11pre-git (Zokor)`; `/proc/cmdline` names
+exactly the evaluated system path; all four subvolumes mounted with
+`compress=zstd:3,noatime`; `vda1` 1 GiB vfat at `/boot`; no swap;
+`systemctl is-system-running` → `running` with 0 failed units; the
+`devenv-machines-recover` watchdog enabled; `/etc/devenv/machine-facts.json`
+reports `"hostname":"netcup"`. A deliberate reboot came back in **23 s** with a
+new `boot_id`, the ssh host key intact, and the systemd-boot menu untouched.
+
+Two facts from the run that the config depends on and that are easy to undo by
+accident:
+
+- **The host boots from the UEFI fallback binary.** `bootctl status` shows
+  `Loader: └─/boot//EFI/BOOT/BOOTX64.EFI`, not an NVRAM entry, because
+  `canTouchEfiVariables = false`. `/boot/EFI/BOOT/BOOTX64.EFI` is what the
+  firmware finds; deleting it leaves the host unbootable.
+- **No `efibootmgr` is installed** and none is needed — `bootctl status` is the
+  diagnostic, and it names the current entry
+  (`nixos-<hash>.conf`) and loader directly.
+
+## Pitfalls when writing checks against this host
+
+Three of these cost a false FAIL before being understood, and all three are
+properties of NixOS or of the tools, not of the install:
+
+- **Authorized keys are not in `~/.ssh/authorized_keys`.** The NixOS sshd
+  module renders them to `/etc/ssh/authorized_keys.d/<user>`. A script that
+  reads `$HOME/.ssh/authorized_keys` reports "no such file" on a perfectly
+  healthy host. (`ssh.authorizedKeysFiles` is what does this.)
+- **`findmnt` takes one target per invocation.** `findmnt / /home /nix /var`
+  prints nothing and exits without an obvious error; loop instead.
+- **`lsblk` collapses btrfs subvolume mounts.** Every subvolume lives on
+  `/dev/vda2`, so `MOUNTPOINT` shows only `/home` while `/nix` and `/var` look
+  unmounted. Check `findmnt` per path, not `lsblk`.
+- Use `lsblk -P` (key=value) for scripted checks: the human output's column
+  padding breaks substring matching on things like `1G vfat /boot`.
+
 ## Recovery
 
 There is no in-place rollback for this milestone, and none is needed. If the

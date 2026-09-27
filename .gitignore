@@ -8,3 +8,8 @@
 .direnv/
 result
 result-*
+# The nixos-facter report `devenv machines install` writes. The Machine sets
+# hardware.facter = null and does not consume it, so this is a local record of
+# the measured hardware, not config. Tracking it would make a later switch to
+# the default facter path silently import a stale report.
+.machines/
