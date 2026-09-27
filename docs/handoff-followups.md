@@ -1,11 +1,22 @@
 # Handoff — netcup follow-ups
 
-Written 2026-09-27 at the end of the session that installed the host. For the
-next session, which should decide the follow-ups **before** writing code.
+Written 2026-09-27 at the end of the session that installed the host, and
+**updated later the same day** when `add-netcup-tailnet` landed. For the next
+session, which should decide the follow-ups **before** writing code.
 
 This document deliberately does not restate what the specs and the archived
 change already say. It carries: the live state, the decisions that are open,
 the mechanics that will otherwise be rediscovered, and the evidence index.
+
+> **Update — 2026-09-27, `add-netcup-tailnet`.** Follow-up 2's *tailnet half* is
+> settled: the host is enrolled as `nc.worm-hue.ts.net` (`100.95.168.15`, tag
+> `tag:server`), reaches the tailnet unattended, and survives a reboot without
+> the auth key. The procedure of record, the new traps, and what remains
+> unverified are in **`docs/tailnet-netcup.md`** — read that, not this section.
+> What is *not* settled is the tailnet half of **follow-up 1**: making the
+> overlay the only access path, which is what §3's menu item (a) now depends on.
+> §4's numbered list is therefore answered-and-retired except for its item 2;
+> §8's questions 2 and 3 are updated below.
 
 ---
 
@@ -20,14 +31,17 @@ requirements are promoted into `openspec/specs/`.
 | Host | netcup VPS, `152.53.92.126`, 12 vCPU / 32 GiB, single `/dev/vda` |
 | Running | `26.11pre-git (Zokor)`, installed 2026-09-27 in **347 s** by one `./bin/devenv machines install netcup` |
 | Layout | GPT, 1 GiB ESP at `/boot`, btrfs root `subvol=/@`, `@home`, `@nix`, `@var`, `compress=zstd:3,noatime`, no swap, no LUKS |
-| Access | key-only SSH, port 22, from the **public** address; one key for `root` and one for `hbohlen`; no tailnet |
-| Secrets | none on the host and none in the repo — no `secretspec.toml` exists |
-| Verified | `scripts/postinstall-verify.sh` (all green) + a deliberate reboot returning in 23 s |
-| Deploy state | **no `deploy` has ever run** — `machines status netcup` reports `{"version":1,"phase":"uninitialized"}` and the target has no `/nix/var/nix/gcroots/devenv-machines/`; that state is written by the *first deploy*, `install` does not create it. So the first deploy is unproven, and it must be root (§3) |
+| Access | key-only SSH, port 22, from the **public** address — *and, since this change, over the tailnet*; one key for `root` and one for `hbohlen` |
+| Tailnet | `nc.worm-hue.ts.net` / `100.95.168.15`, tag `tag:server`, enrolled 2026-09-27 — procedure in `docs/tailnet-netcup.md` |
+| Secrets | `secretspec.toml` now exists (1Password `dev`, `TS_AUTH_KEY` only). This drags the vault onto **every** `devenv machines` invocation, read-only `info` included — measured, and accepted on purpose |
+| Verified | `scripts/postinstall-verify.sh` (all green) + a deliberate reboot returning in 23 s; and, since this change, `scripts/tailnet-verify.sh` + `scripts/tailnet-reboot-check.sh` |
+| Deploy state | **`deploy` has now run** (2026-09-27, twice) — `machines status netcup` reports `outcome: "succeeded"`, no longer `phase: "uninitialized"`. It must still be root (§3) |
 
-Specs: `openspec/specs/{netcup-machine,netcup-disk-layout,netcup-install}/spec.md`
+Specs: `openspec/specs/{netcup-machine,netcup-disk-layout,netcup-install,netcup-tailnet,netcup-operations}/spec.md`
 Evidence and reasoning: `openspec/changes/archive/2026-09-27-add-netcup-bare-install/`
+Tailnet evidence and reasoning: `openspec/changes/archive/2026-09-27-add-netcup-tailnet/`
 Procedure and pitfalls: `docs/install-netcup.md`
+Tailnet (node, enrollment, traps, what is unverified): `docs/tailnet-netcup.md`
 
 ## 2. What was deliberately left out, and why
 
@@ -36,10 +50,15 @@ exactly one moving part:
 
 1. **Hardening — closing root login.** The deployed host accepts root key login.
    That is the price of `devenv machines` requiring root SSH (§3).
-2. **Tailnet access.** The host has no tailscale. The old tailnet node `nc`
+2. **Tailnet access.** ~~The host has no tailscale. The old tailnet node `nc`
    (`100.95.92.47`) is still registered but **offline — last seen
    2026-09-27T13:10Z**, i.e. it is the wiped Debian install. Re-enrolling the
-   host will collide with that stale registration (`tailscale` keeps the name).
+   host will collide with that stale registration (`tailscale` keeps the name).~~
+   **SETTLED 2026-09-27 by `add-netcup-tailnet`.** The stale node was deleted, the
+   host enrolled as `nc` (unsuffixed, as intended) and carries `tag:server`, and
+   the overlay comes up unattended across a reboot without re-reading the auth
+   key. `docs/tailnet-netcup.md` is the procedure of record. What remains open is
+   *follow-up 1's* half — making the overlay the only access path.
 3. **Everything else**: host-side secrets, snapshots, zram/swap, operator
    tooling on the host, a second host (`oci`). Not discussed, not designed.
 
@@ -114,26 +133,38 @@ existing text before writing a delta.
 
 ## 4. Follow-up 2 — tailnet access
 
-Decisions to make, roughly in dependency order:
+**Status: items 1, 3 and 4 are SETTLED (2026-09-27, `add-netcup-tailnet`); item 2
+is the live remainder, and it is what follow-up 1 waits on.** Read
+`docs/tailnet-netcup.md` for what was built; the summaries below record only
+which decision was taken and why it is closed.
 
-1. **Enrollment mechanics.** `install.secrets` can deliver a tailscale auth key
+1. **Enrollment mechanics.** ~~`install.secrets` can deliver a tailscale auth key
    during install (that was the headline reason to like Machines), or `tailscale
-   up` can stay a manual post-boot step. The first makes the next re-image
-   self-enrolling; it also drags the vault onto the install path.
+   up` can stay a manual post-boot step.~~ **Decided: `install.secrets`.** The key
+   is declared once and delivered to `/var/lib/tailscale/authkey`, which the
+   generated `tailscaled-autoconnect.service` reads. Consequence accepted
+   explicitly: once `secretspec.toml` exists, **every** `devenv machines`
+   invocation resolves the whole profile, so the 1Password vault is now on the
+   `machines` path. The live host was brought to the same state by
+   `scripts/tailnet-enroll.sh` instead, because `deploy` does not refresh
+   bootstrap files. **The install-time delivery itself is still unverified — it
+   needs a re-image.**
 2. **Does the tailnet become the ONLY access path?** If yes, the public sshd
    exposure goes away and root-key login can be confined to `tailscale0`. This
    is where follow-ups 1 and 2 fuse into one design.
-3. **Secrets plumbing.** The tailscale auth key currently exists only as
+3. **Secrets plumbing.** ~~The tailscale auth key currently exists only as
    `TS_AUTH_KEY` in the *old* repo's Proton Pass manifest
    (`~/projects/nixos/secretspec.toml`). This repo has no manifest and uses
-   1Password. Two consequences worth stating in the proposal: (i) 1Password is
-   now a Hermes secret source but **not** a secretspec provider for this repo
-   yet, and (ii) the measured trap — once a `secretspec.toml` exists, *every*
-   `devenv machines` invocation, read-only `info` included, resolves the whole
-   profile.
-4. **Naming and ACLs.** The stale `nc` node must be resolved; decide the
-   intended MagicDNS name (the deployed `networking.hostName` is `netcup`, and
-   the tailnet name need not match) and any tags/ACLs.
+   1Password.~~ **Settled: 1Password `dev` is this repo's secretspec provider**
+   (`secretspec.toml`, `TS_AUTH_KEY` → `onepassword://dev`). Both consequences
+   named here held and are now measured fact: 1Password was already a Hermes
+   secret source, and the profile-resolution trap is real — the vault is on
+   every `machines` path. The item's field is `credential`, not `password`.
+4. **Naming and ACLs.** ~~The stale `nc` node must be resolved; decide the
+   intended MagicDNS name …~~ **Settled:** the stale node was deleted, and the
+   name is pinned with `extraUpFlags = [ "--hostname=nc" ]` — deliberately not
+   by renaming the host, so `networking.hostName` stays `netcup`. Tags come from
+   the key (`tag:server`); no other ACL change was made by this change.
 5. **Host-side secret management, if any.** secretspec is a bootstrap path, not
    a runtime one — sops-nix or agenix is the long-term shape if the host ever
    holds secrets at rest.
@@ -208,11 +239,19 @@ Decisions to make, roughly in dependency order:
 1. ~~Does `devenv machines deploy` work non-root?~~ **Answered 2026-09-27: no.**
    Deploy, status and install are all root-only by construction; see §3. §3's
    menu is therefore already narrowed to (a) / (c) / (d).
-2. After the tailnet lands, is public SSH closed entirely? (One exception is
-   already fixed and cannot be designed away: `devenv machines install` needs
-   root once, so a re-image needs the console or a temporary root key — §3.)
-3. Does the auth key get delivered at install time (`install.secrets`) or
-   manually after boot?
+2. After the tailnet lands, is public SSH closed entirely? **(Still open — this
+   is now THE question, and it is follow-up 1's, not follow-up 2's.)** The tailnet
+   has landed and the public path is untouched: closing it is a deliberate
+   later change, and it is what lets §3's menu item (a) exist at all. One
+   exception is already fixed and cannot be designed away: `devenv machines
+   install` needs root once, so a re-image needs the console or a temporary root
+   key — §3.
+3. ~~Does the auth key get delivered at install time (`install.secrets`) or
+   manually after boot?~~ **Answered 2026-09-27: at install time** — declared in
+   `secretspec.toml` + `devenv.nix`, read from `/var/lib/tailscale/authkey` by
+   the generated unit. The live host was enrolled by script instead (a deploy
+   cannot write bootstrap files); the install-time delivery is the part that
+   still needs a re-image to prove.
 4. Which secrets does this build actually need, and do they go in 1Password?
 5. Is a second host (`oci`) in scope this year, or does the module shape stay
    single-host until it is?

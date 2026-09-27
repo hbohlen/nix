@@ -1,15 +1,34 @@
 # yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
 #
-# Inputs for the netcup build. Deliberately two.
+# Inputs and SecretSpec configuration for the netcup build.
 #
-# NO SECRETSPEC BLOCK, AND NO secretspec.toml IN THIS TREE. Every
-# `devenv machines` invocation — read-only `info` included — resolves the whole
-# secretspec profile when a manifest is present (measured 2026-09-27: even
-# `machines info` refused to run until all six declared secrets resolved). The
-# install milestone resolves no secrets, so keeping the manifest out of the tree
-# is what keeps the vault off the install path. A later change that needs a
-# secret adds the manifest AND accepts that it becomes a prerequisite for
-# inspecting the machine.
+# SECRETSPEC IS IN THE TREE NOW (2026-09-27), so THE VAULT IS ON THE `machines`
+# PATH. Every `devenv machines` invocation — read-only `info` included —
+# resolves the whole secretspec profile when a manifest is present (the previous
+# build measured `machines info` refusing to run until all six of its declared
+# secrets resolved; re-measured here). The install milestone deliberately kept
+# the manifest out of the tree to keep the vault off the install path. The
+# tailnet change puts ONE secret on that path and accepts the coupling, because
+# `install.secrets` is the only mechanism that makes the enrollment a property
+# of the machine rather than of an operator's session.
+#
+# The `secretspec` block below is what makes LOCAL execution work: devenv
+# resolves the value on this workstation and streams it to the target over
+# authenticated SSH. Target execution would instead require the 1Password
+# provider to be reachable from the temporary kexec'd installer — a
+# service-account token on a throwaway host, for no benefit here.
+#
+# `provider` and `profile` are ALIASES matching the [providers.*] and
+# [profiles.*] entries in secretspec.toml, not URIs. Rename one without the
+# other and every `machines` command fails.
+#
+# ADD INPUTS BY HAND. `devenv inputs add` rewrites this file and drops every
+# comment in it (measured 2026-09-27).
+secretspec:
+  enable: true
+  provider: dev
+  profile: default
+
 inputs:
   nixpkgs:
     url: github:cachix/devenv-nixpkgs/rolling

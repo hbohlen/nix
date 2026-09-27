@@ -1,8 +1,16 @@
 # hosts/netcup/default.nix — netcup VPS (x86_64-linux): the host half.
 #
-# Scope of this milestone: the machine boots, and it is reachable over SSH as
-# the operator with a key. Nothing else. No tailnet, no secrets, no
-# snapshotting, no agent tooling.
+# Scope: the machine boots, and it is reachable over SSH as the operator with a
+# key — over the public address AND, since the tailnet change, over the overlay.
+# No secrets at rest, no snapshotting, no agent tooling, and no hardening beyond
+# key-only SSH.
+#
+# THE TAILNET IS DECLARED IN ./tailnet.nix, WHICH THIS FILE IMPORTS. It is a
+# separate module because its concerns are separable and because its enabling
+# detail — the auth-key path, the node name, and why neither is what the module
+# documentation suggests — has nowhere sensible to live in a 100-line host file.
+# Adding tailscale changes NO firewall policy: the module's `openFirewall` stays
+# false, so the facts below are unchanged.
 #
 # NO FIREWALL POLICY IS DECLARED HERE, and none is needed: the nixpkgs defaults
 # already give a default-deny firewall with sshd's port opened
@@ -36,6 +44,7 @@ in
   imports = [
     ./disko.nix
     ./hardware.nix
+    ./tailnet.nix
   ];
 
   # The operator account. `hashedPassword = "!"` is a shadow lock marker: no

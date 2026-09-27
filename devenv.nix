@@ -53,6 +53,26 @@
     # kind — measured hardware entering the configuration — not a toggle.
     hardware.facter = null;
 
+    # WHERE THE TAILNET AUTH KEY GOES, and the reason a secretspec manifest is in
+    # the tree at all. `install.secrets` is written AFTER nixos-install and
+    # BEFORE reboot, so a re-image enrolls the host on its first boot with no
+    # operator in the loop. `deploy` does NOT refresh these files — there is no
+    # deploy-side equivalent — which is why the already-installed host's path is
+    # populated once by scripts/tailnet-enroll.sh instead.
+    #
+    # The attribute name must equal services.tailscale.authKeyFile in
+    # hosts/netcup/tailnet.nix. It is a STRING, never a Nix path literal: a path
+    # literal copies its contents into the world-readable Nix store. The value
+    # never enters the store, and scripts/tailnet-preflight.sh proves it.
+    #
+    # `owner` is numeric because the installer cannot look up users in the system
+    # it is installing into.
+    install.secrets."/var/lib/tailscale/authkey" = {
+      secret = "TS_AUTH_KEY";
+      owner = "0:0";
+      mode = "0600";
+    };
+
     nixos =
       { ... }:
       {
