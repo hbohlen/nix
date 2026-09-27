@@ -23,6 +23,7 @@ requirements are promoted into `openspec/specs/`.
 | Access | key-only SSH, port 22, from the **public** address; one key for `root` and one for `hbohlen`; no tailnet |
 | Secrets | none on the host and none in the repo — no `secretspec.toml` exists |
 | Verified | `scripts/postinstall-verify.sh` (all green) + a deliberate reboot returning in 23 s |
+| Deploy state | **no `deploy` has ever run** — `machines status netcup` reports `{"version":1,"phase":"uninitialized"}` and the target has no `/nix/var/nix/gcroots/devenv-machines/`; that state is written by the *first deploy*, `install` does not create it. So the first deploy is unproven, and it must be root (§3) |
 
 Specs: `openspec/specs/{netcup-machine,netcup-disk-layout,netcup-install}/spec.md`
 Evidence and reasoning: `openspec/changes/archive/2026-09-27-add-netcup-bare-install/`
@@ -57,19 +58,55 @@ What is already measured (do not re-derive):
 - The deployed config sidesteps this with `PermitRootLogin = "prohibit-password"`
   plus a root authorized key.
 
-**The one experiment that picks the design, before any spec writing:** can
-`devenv machines deploy` work as a non-root user (e.g. `target.host =
-"hbohlen@…"` with sudo)? devenv's docs say root is required; that claim has not
-been tested here. If it turns out to work, the whole tangle dissolves and root
-login can close cleanly. If it does not, the options below are the menu:
+**Measured later the same day (2026-09-27) — non-root deploy does NOT work. This
+is settled by measurement, not by the docs.** Run with the target overridden at
+the CLI (`-O machines.netcup.target.host:string hbohlen@152.53.92.126`, so no
+file was edited), with the sudo theory's precondition actually in place:
+`hbohlen@` has passwordless sudo on the target (`sudo -n id -u` → `0`; wheel plus
+`wheelNeedsPassword = false`). Both paths still refused:
 
-- **(a)** Keep root key-only, but confine it with a `Match Address` block to the
+- `machines status netcup` exits 1 on a literal remote guard and never attempts
+  sudo: `test "$(id -u)" = 0 || { echo 'Deployment status requires root SSH'
+  >&2; exit 1; }`.
+- `machines deploy netcup --yes` builds, evaluates and prints the plan, then dies
+  at the first write: `nix copy --to ssh://hbohlen@152.53.92.126 …` →
+  `cannot add path … because it lacks a signature by a trusted key` — a non-root
+  user on the target is not a trusted user. Activation is never reached.
+- Deeper, from the built executor
+  (`devenv.config.machines.netcup.build.deployer`): its docstring is "Root-only
+  NixOS deployment executor, invoked over SSH"; `main()` ends in
+  `if os.geteuid() != 0: parser.error("the machine executor requires root")`;
+  activation is `<system>/bin/switch-to-configuration switch` plus `systemctl`.
+  The **only** sudo branch in devenv's machine scripts is in the *nix-darwin*
+  activate script (`… else sudo -H -- … HOME=/var/root …`) — exactly what the
+  docs say (NixOS needs root SSH; nix-darwin may use an admin with passwordless
+  sudo). `MachineTarget` has two fields (`host`, `sshOpts`): there is no knob.
+
+**`install` is root by nature for the same reason, so this does not end at
+deploy.** Its preflight runs `echo "user=$(id -u)"` on the target and refuses
+with "install requires root SSH access, but the current user on the target has
+uid N. Either SSH in as root or configure root login on the target."; the kexec
+phase pipes a tarball into `/root` (`curl … | tar xzf - -C /root &&
+/root/kexec/run`); and install refuses a config declaring no root auth, because
+`nixos-install` runs with `--no-root-password`.
+
+The menu, corrected:
+
+- **(a)** Keep root key-only, confined with a `Match Address` block to the
   tailnet once follow-up 2 lands.
-- **(b)** A dedicated deploy account the installer/activator accepts (needs the
-  experiment above).
+- **(b)** ~~A dedicated deploy account the installer/activator accepts~~ —
+  **dead as written.** The NixOS activator accepts root only, and an account the
+  *installer* would accept cannot exist at all. Only nix-darwin has a sudo path.
 - **(c)** Keep root-key SSH permanently and stop treating it as debt.
 - **(d)** Whatever replaces deploys entirely — e.g. `devenv machines install`
-  only, on re-image.
+  only, on re-image. The limit this now carries: **install always needs root
+  once**, so a re-image needs the provider console or a temporary root key even
+  if root login is otherwise closed.
+
+Side observation from the refused run (useful before touching the host): its plan
+compared `Running` / `Profile` / `Requested` as one identical store path with
+`Closure: +0 / -0 store paths` — the live host currently matches exactly what
+this repo declares.
 
 **Spec note:** `netcup-machine`'s SSH requirement *currently requires* root key
 SSH, so this follow-up is a **MODIFIED** requirement, not an addition. Read the
@@ -121,6 +158,10 @@ Decisions to make, roughly in dependency order:
 
 - **Use `./bin/devenv`, not `devenv`.** Bare `devenv` on this workstation is
   2.2.2 and has no `machines` subcommand; the repo pins 2.4.0 and gcroots it.
+- **Test an access hypothesis without editing `devenv.nix`:** override the target
+  on the command line, e.g. `./bin/devenv machines status netcup -O
+  machines.netcup.target.host:string hbohlen@152.53.92.126`. `status` and
+  `check` are read-only; only `deploy` builds and activates.
 - **Never run bare `devenv update`.** It moves `devenv.lock`'s `devenv` input to
   the default branch (measured: main's `bd08a52`), which the pinned binary was
   never built against. It is pinned to `v2.4.0` in `devenv.yaml`; update inputs
@@ -164,8 +205,12 @@ Decisions to make, roughly in dependency order:
 
 ## 8. Questions to answer in the next session
 
-1. Does `devenv machines deploy` work non-root? (Run this first; it decides §3.)
-2. After the tailnet lands, is public SSH closed entirely?
+1. ~~Does `devenv machines deploy` work non-root?~~ **Answered 2026-09-27: no.**
+   Deploy, status and install are all root-only by construction; see §3. §3's
+   menu is therefore already narrowed to (a) / (c) / (d).
+2. After the tailnet lands, is public SSH closed entirely? (One exception is
+   already fixed and cannot be designed away: `devenv machines install` needs
+   root once, so a re-image needs the console or a temporary root key — §3.)
 3. Does the auth key get delivered at install time (`install.secrets`) or
    manually after boot?
 4. Which secrets does this build actually need, and do they go in 1Password?
