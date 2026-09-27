@@ -1,0 +1,10 @@
+# Repo-local pins and build products — never tracked.
+#
+# .devenv-toolchain is the gcroot for the pinned devenv the install work needs
+# (2.4+ for `machines`; the global profile binary is 2.2.2). Rebuild it with the
+# command in bin/devenv's header or docs/install-netcup.md.
+.devenv-toolchain
+.devenv/
+.direnv/
+result
+result-*

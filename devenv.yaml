@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
+#
+# Inputs for the netcup build. Deliberately two.
+#
+# NO SECRETSPEC BLOCK, AND NO secretspec.toml IN THIS TREE. Every
+# `devenv machines` invocation — read-only `info` included — resolves the whole
+# secretspec profile when a manifest is present (measured 2026-09-27: even
+# `machines info` refused to run until all six declared secrets resolved). The
+# install milestone resolves no secrets, so keeping the manifest out of the tree
+# is what keeps the vault off the install path. A later change that needs a
+# secret adds the manifest AND accepts that it becomes a prerequisite for
+# inspecting the machine.
+inputs:
+  nixpkgs:
+    url: github:cachix/devenv-nixpkgs/rolling
+
+  # Pinned to the SAME commit as the binary in bin/devenv. The module source
+  # that defines `machines`/`machinesMeta` comes from this lock node, not from
+  # the binary, and the two must agree: the 2.4.0 binary against an older locked
+  # rev fails with "Failed to get attribute 'devenv.config.machinesMeta'", and
+  # a bare `devenv update` silently moves this node to the default branch
+  # (measured 2026-09-27: it resolved to main's bd08a52, a commit the pinned
+  # binary was never built against). Keep it on the release tag.
+  devenv:
+    url: github:cachix/devenv/v2.4.0?dir=src/modules
+
+  # disko — MANDATORY for every NixOS machine, deploy-only ones included:
+  # devenv imports `disko.nixosModules.disko` itself and exposes no disko
+  # option, so the layout can only come from our own module
+  # (hosts/netcup/disko.nix). The missing-input error is lazy.
+  #
+  # The `inputs.nixpkgs.follows` nesting is REQUIRED — it is what
+  # `devenv inputs add disko … --follows nixpkgs` writes. The flat
+  # `follows: nixpkgs` form silently locks disko as an ALIAS of the nixpkgs
+  # node instead of adding a disko node at all (measured 2026-09-27: root
+  # inputs showed `"disko": ["nixpkgs"]` and eval failed with
+  # `error: attribute 'disko' missing`).
+  disko:
+    url: github:nix-community/disko
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
