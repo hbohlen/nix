@@ -85,6 +85,10 @@ context: |
   CONVENTIONS
   - Specs before code. Every change starts as an OpenSpec proposal and lands
     with `openspec validate`.
+  - The follow-ups this build deliberately excludes (closing root login, tailnet
+    access) are framed for discussion in `docs/handoff-followups.md` — read it
+    before proposing either, and answer its question 1 (non-root `machines
+    deploy`) before writing the hardening spec.
   - `~/projects/nixos` (the previous implementation) is a REFERENCE, not
     truth. Its ADRs, module split and comments were decided against a different
     host and a different direction; reuse what earns it and say so, but never

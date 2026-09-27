@@ -143,8 +143,13 @@
 - [x] 9.2 Record the outcome against the open questions in `design.md`,
       especially the `system.stateVersion` release and whether the freshly
       imaged OS's EFI variables affected the first boot.
-- [ ] 9.3 Archive the change and scaffold the two follow-ups it deliberately
+- [x] 9.3 Archive the change and scaffold the two follow-ups it deliberately
       excludes: closing root login (which must also decide what replaces the
       deploy path) and adding tailnet access.
+      Done 2026-09-27: archived as `2026-09-27-add-netcup-bare-install` with its
+      requirements promoted into `openspec/specs/`. The follow-ups are **not**
+      scaffolded as changes yet — they are framed for discussion in
+      `docs/handoff-followups.md`, because follow-up 1 needs one experiment
+      (non-root `machines deploy`) before its spec can be written honestly.
 - [x] 9.4 Commit the work in the colocated jj/Git repository, one described
       change per action.

@@ -1,0 +1,173 @@
+# Handoff — netcup follow-ups
+
+Written 2026-09-27 at the end of the session that installed the host. For the
+next session, which should decide the follow-ups **before** writing code.
+
+This document deliberately does not restate what the specs and the archived
+change already say. It carries: the live state, the decisions that are open,
+the mechanics that will otherwise be rediscovered, and the evidence index.
+
+---
+
+## 1. Where things stand
+
+`~/nix` is the live repository and the netcup host now runs the NixOS it
+declares. The change `2026-09-27-add-netcup-bare-install` is **archived**; its
+requirements are promoted into `openspec/specs/`.
+
+| | |
+|---|---|
+| Host | netcup VPS, `152.53.92.126`, 12 vCPU / 32 GiB, single `/dev/vda` |
+| Running | `26.11pre-git (Zokor)`, installed 2026-09-27 in **347 s** by one `./bin/devenv machines install netcup` |
+| Layout | GPT, 1 GiB ESP at `/boot`, btrfs root `subvol=/@`, `@home`, `@nix`, `@var`, `compress=zstd:3,noatime`, no swap, no LUKS |
+| Access | key-only SSH, port 22, from the **public** address; one key for `root` and one for `hbohlen`; no tailnet |
+| Secrets | none on the host and none in the repo — no `secretspec.toml` exists |
+| Verified | `scripts/postinstall-verify.sh` (all green) + a deliberate reboot returning in 23 s |
+
+Specs: `openspec/specs/{netcup-machine,netcup-disk-layout,netcup-install}/spec.md`
+Evidence and reasoning: `openspec/changes/archive/2026-09-27-add-netcup-bare-install/`
+Procedure and pitfalls: `docs/install-netcup.md`
+
+## 2. What was deliberately left out, and why
+
+Three things are absent on purpose. Each is one follow-up change, and each adds
+exactly one moving part:
+
+1. **Hardening — closing root login.** The deployed host accepts root key login.
+   That is the price of `devenv machines` requiring root SSH (§3).
+2. **Tailnet access.** The host has no tailscale. The old tailnet node `nc`
+   (`100.95.92.47`) is still registered but **offline — last seen
+   2026-09-27T13:10Z**, i.e. it is the wiped Debian install. Re-enrolling the
+   host will collide with that stale registration (`tailscale` keeps the name).
+3. **Everything else**: host-side secrets, snapshots, zram/swap, operator
+   tooling on the host, a second host (`oci`). Not discussed, not designed.
+
+## 3. Follow-up 1 — closing root login, and the deploy path it closes
+
+**The tangle, in one line:** `devenv machines` install *and* deploy need root
+SSH, so any hardening that closes root login also removes routine deploys.
+
+What is already measured (do not re-derive):
+
+- Current posture on the live host: `/etc/ssh/authorized_keys.d/root` holds
+  exactly one key, shared with `hbohlen`; password auth is refused.
+- In the pre-install experiment, a config with `PermitRootLogin = "no"` and no
+  root key produced `installCheck.hasRootAuth = false` and
+  `ssh.rootLogin = "no"` — a configuration Machines cannot install or deploy.
+- The deployed config sidesteps this with `PermitRootLogin = "prohibit-password"`
+  plus a root authorized key.
+
+**The one experiment that picks the design, before any spec writing:** can
+`devenv machines deploy` work as a non-root user (e.g. `target.host =
+"hbohlen@…"` with sudo)? devenv's docs say root is required; that claim has not
+been tested here. If it turns out to work, the whole tangle dissolves and root
+login can close cleanly. If it does not, the options below are the menu:
+
+- **(a)** Keep root key-only, but confine it with a `Match Address` block to the
+  tailnet once follow-up 2 lands.
+- **(b)** A dedicated deploy account the installer/activator accepts (needs the
+  experiment above).
+- **(c)** Keep root-key SSH permanently and stop treating it as debt.
+- **(d)** Whatever replaces deploys entirely — e.g. `devenv machines install`
+  only, on re-image.
+
+**Spec note:** `netcup-machine`'s SSH requirement *currently requires* root key
+SSH, so this follow-up is a **MODIFIED** requirement, not an addition. Read the
+existing text before writing a delta.
+
+## 4. Follow-up 2 — tailnet access
+
+Decisions to make, roughly in dependency order:
+
+1. **Enrollment mechanics.** `install.secrets` can deliver a tailscale auth key
+   during install (that was the headline reason to like Machines), or `tailscale
+   up` can stay a manual post-boot step. The first makes the next re-image
+   self-enrolling; it also drags the vault onto the install path.
+2. **Does the tailnet become the ONLY access path?** If yes, the public sshd
+   exposure goes away and root-key login can be confined to `tailscale0`. This
+   is where follow-ups 1 and 2 fuse into one design.
+3. **Secrets plumbing.** The tailscale auth key currently exists only as
+   `TS_AUTH_KEY` in the *old* repo's Proton Pass manifest
+   (`~/projects/nixos/secretspec.toml`). This repo has no manifest and uses
+   1Password. Two consequences worth stating in the proposal: (i) 1Password is
+   now a Hermes secret source but **not** a secretspec provider for this repo
+   yet, and (ii) the measured trap — once a `secretspec.toml` exists, *every*
+   `devenv machines` invocation, read-only `info` included, resolves the whole
+   profile.
+4. **Naming and ACLs.** The stale `nc` node must be resolved; decide the
+   intended MagicDNS name (the deployed `networking.hostName` is `netcup`, and
+   the tailnet name need not match) and any tags/ACLs.
+5. **Host-side secret management, if any.** secretspec is a bootstrap path, not
+   a runtime one — sops-nix or agenix is the long-term shape if the host ever
+   holds secrets at rest.
+
+## 5. Cross-cutting decisions
+
+- **1Password as this repo's secretspec provider.** Vault `dev` holds
+  `NETCUP_CONSOLE` and `SSH Key`, and nothing else that is a static secret.
+  Which secrets does this build actually need? A short list beats a manifest
+  invented up front.
+- **What goes in the operator half of `devenv.nix`?** It is empty by design
+  (one file, two consumers: `devenv shell` and `devenv machines`). Tooling
+  graduates in only when it proves durable.
+- **ADRs?** This repo has none. `~/projects/nixos` has five, all written against
+  a different host and direction — reference, not truth. If a decision here is
+  expensive to reverse (the tailnet-only access choice is), it may deserve one.
+- **Settled, do not reopen:** the nixos-facter report is gitignored while
+  `hardware.facter = null`. Reasoning is in the archived design's open
+  questions.
+
+## 6. Mechanics a fresh session needs (and will otherwise rediscover)
+
+- **Use `./bin/devenv`, not `devenv`.** Bare `devenv` on this workstation is
+  2.2.2 and has no `machines` subcommand; the repo pins 2.4.0 and gcroots it.
+- **Never run bare `devenv update`.** It moves `devenv.lock`'s `devenv` input to
+  the default branch (measured: main's `bd08a52`), which the pinned binary was
+  never built against. It is pinned to `v2.4.0` in `devenv.yaml`; update inputs
+  by name.
+- **Host identity** is the 1Password `dev` item `SSH Key`,
+  `SHA256:HvoLYt+w9VdcQPwLsF72g9/BZRlwjIaNkHkhJuNHqIQ` — **not** the
+  workstation's own `~/.ssh/id_ed25519`. Materialize it with `op inject` into a
+  `0600` file, and **append a trailing newline** (the injected value lacks one
+  and `ssh-keygen` calls it `invalid format`). It is currently at
+  `~/.ssh/id_ed25519-op-dev`; `devenv.nix` carries it in `target.sshOpts`.
+- **1Password access from the agent** works: the service-account token is in
+  `~/.hermes/.env` as `OP_SERVICE_ACCOUNT_TOKEN` (a copy also sits at
+  `~/.config/op-sa-token`, mode 0600). `op vault list` → `dev`. Never
+  `op item get --format json` an item: it does **not** redact.
+- **`~/.ssh/config`** had the old repo's fragment included; it aborts *every*
+  ssh call in a non-interactive environment because of a `${XDG_RUNTIME_DIR}`
+  `IdentityAgent` line. The Include is now disabled (backup
+  `~/.ssh/config.bak-20260927`). If ssh misbehaves, this is the first suspect.
+- **Checking the host:** `scripts/preflight.sh` (gates),
+  `scripts/postinstall-verify.sh` (evidence), `scripts/reboot-check.sh`
+  (unattended boot). Their headers record the NixOS quirks that make a naive
+  check report false failures — authorized keys live in
+  `/etc/ssh/authorized_keys.d/`, `findmnt` takes one target per invocation,
+  `lsblk` collapses btrfs subvolume mounts.
+- **Boot detail:** the host boots from the UEFI fallback binary
+  `/boot/EFI/BOOT/BOOTX64.EFI` (no NVRAM entry, `canTouchEfiVariables =
+  false`). It is load-bearing — do not "clean up" `/boot`.
+- **`~/projects/nixos` is reference material.** Nothing may be inherited by
+  copying; if a decision is reused, say why it still holds.
+
+## 7. Suggested skills for the next session
+
+- `software-development/openspec-change-authoring` — specs before code, which is
+  this repo's convention (`openspec/config.yaml` carries the constraints).
+- `devops/nixos-host-config` — module and eval hygiene.
+- `devops/nixos-remote-deploy` — the deploy path this repo deliberately differs
+  from, useful as contrast.
+- `devops/onepassword-cli-secrets` — vault access without leaking material.
+- `bb-cli` + `devops/herdr-pane-control` — if a long or risky step should run in
+  a visible pane rather than an invisible tool call.
+
+## 8. Questions to answer in the next session
+
+1. Does `devenv machines deploy` work non-root? (Run this first; it decides §3.)
+2. After the tailnet lands, is public SSH closed entirely?
+3. Does the auth key get delivered at install time (`install.secrets`) or
+   manually after boot?
+4. Which secrets does this build actually need, and do they go in 1Password?
+5. Is a second host (`oci`) in scope this year, or does the module shape stay
+   single-host until it is?
