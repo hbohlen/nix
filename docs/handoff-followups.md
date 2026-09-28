@@ -67,6 +67,15 @@ exactly one moving part:
 **The tangle, in one line:** `devenv machines` install *and* deploy need root
 SSH, so any hardening that closes root login also removes routine deploys.
 
+> **Update 2026-09-28, after `add-netcup-self-deploy` archived.** The routine
+> deploy now happens ON the host, over `root@localhost`, under the loopback
+> identity `hosts/netcup/default.nix` declares for root (`docs/self-deploy-netcup.md`,
+> design D4). So this follow-up's trade is narrower than it was: a
+> `Match Address` restriction has to keep `127.0.0.1` reachable or it breaks the
+> host's own loop — recorded as risk R7 — while the WORKSTATION's root path is
+> what closing root login would actually end. Carry the loop's constraint into
+> the design of this follow-up rather than discovering it there.
+
 What is already measured (do not re-derive):
 
 - Current posture on the live host: `/etc/ssh/authorized_keys.d/root` holds

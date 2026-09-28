@@ -415,7 +415,7 @@ attributed rather than guessed at.
       workstation-unreachable build, R5's install-time delivery), and one
       scenario amended because the chosen design contradicted it. Nothing is
       left uncited and unremarked.**
-- [ ] 9.2 Run `openspec validate add-netcup-self-deploy --strict --json` and read
+- [x] 9.2 Run `openspec validate add-netcup-self-deploy --strict --json` and read
       the `issues` array rather than asserting it is empty; an INFO note is a
       style signal, an `error` is a failure.
       — Verify: `valid: true` with no `error`-level issue.
@@ -424,7 +424,39 @@ attributed rather than guessed at.
       — `issues` is EMPTY, not merely free of errors: no INFO style note either.
       `summary.totals` `passed: 1, failed: 0`, `root.source: nearest` at
       `/home/hbohlen/nix`.**
-- [ ] 9.3 Promote: `openspec archive add-netcup-self-deploy`, then confirm the
+- [x] 9.3 Promote: `openspec archive add-netcup-self-deploy`, then confirm the
       capability lands at `openspec/specs/netcup-self-deploy/`.
       — Verify: `openspec list --specs` contains `netcup-self-deploy` with its
       requirement count, and the change directory is under `archive/`.
+      **Done 2026-09-28: `openspec archive ... --yes --json` →
+      `archivedAs: 2026-09-28-add-netcup-self-deploy`, `specsUpdated: true`,
+      `totals: added 10, modified 0, removed 0, renamed 0` — no scenario was
+      dropped, which is what the previous change's abort was about. Read back:
+      `openspec list --specs` now lists `netcup-self-deploy  requirements 10`,
+      the change directory is `openspec/changes/archive/2026-09-28-add-netcup-self-deploy/`,
+      and `openspec validate --all --strict` reports `Totals: 6 passed, 0 failed
+      (6 items)`.**
+
+---
+
+## Outcome
+
+All 33 tasks in this change are ticked and every one carries its evidence; this
+change archives with NOTHING open, unlike the previous one, whose seven unticked
+tasks were deliberate and are explained in its own record. The host rebuilds and
+activates its own system from its
+own checkout, over the loopback, with no workstation, no vault session and no
+long-lived credential of the vault's anywhere but the root-owned file D3 places
+on it — and when an activation fails, the previous system comes back.
+
+Three things this change found rather than planned, all recorded above with the
+measurement that showed them: the host cannot push, so the repository is
+published from the workstation and the host only pulls (8.1); the host has no
+python3 and a non-interactive ssh PATH has no `hostname`, so host-side scripts
+use the host's own toolset (7.4); and one of this change's own scenarios was
+contradicted by the route it chose, so it was amended rather than quietly
+carried (9.1).
+
+What is left for later, and deliberately: closing root login and any
+`Match Address` restriction — the hardening change — with the constraint this
+change hands it recorded in `hosts/netcup/default.nix` and risk R7.
