@@ -1,8 +1,9 @@
 # Handoff — netcup follow-ups
 
-Written 2026-09-27 at the end of the session that installed the host, and
-**updated later the same day** when `add-netcup-tailnet` landed. For the next
-session, which should decide the follow-ups **before** writing code.
+Written 2026-09-27 at the end of the session that installed the host,
+**updated later the same day** when `add-netcup-tailnet` landed, and
+**updated 2026-09-28** after the vault-write / `GH_TOKEN` session (§9). For the
+next session, which should decide the follow-ups **before** writing code.
 
 This document deliberately does not restate what the specs and the archived
 change already say. It carries: the live state, the decisions that are open,
@@ -33,7 +34,7 @@ requirements are promoted into `openspec/specs/`.
 | Layout | GPT, 1 GiB ESP at `/boot`, btrfs root `subvol=/@`, `@home`, `@nix`, `@var`, `compress=zstd:3,noatime`, no swap, no LUKS |
 | Access | key-only SSH, port 22, from the **public** address — *and, since this change, over the tailnet*; one key for `root` and one for `hbohlen` |
 | Tailnet | `nc.worm-hue.ts.net` / `100.95.168.15`, tag `tag:server`, enrolled 2026-09-27 — procedure in `docs/tailnet-netcup.md` |
-| Secrets | `secretspec.toml` now exists (1Password `dev`, `TS_AUTH_KEY` only). This drags the vault onto **every** `devenv machines` invocation, read-only `info` included — measured, and accepted on purpose |
+| Secrets | `secretspec.toml` now exists (1Password `dev`, `TS_AUTH_KEY` only). This drags the vault onto **every** `devenv machines` invocation, read-only `info` included — measured, and accepted on purpose. The VAULT holds more than the manifest declares (2026-09-28: `GH_TOKEN`, `OP_SERVICE_ACCOUNT_TOKEN`, `HERMES_API_SERVER_KEY`, `CLOUDFLARE_API_TOKEN` alongside `SSH Key` and `TS_AUTH_KEY`); only `TS_AUTH_KEY` is on the machines path |
 | Verified | `scripts/postinstall-verify.sh` (all green) + a deliberate reboot returning in 23 s; and, since this change, `scripts/tailnet-verify.sh` + `scripts/tailnet-reboot-check.sh` |
 | Deploy state | **`deploy` has now run** (2026-09-27, twice) — `machines status netcup` reports `outcome: "succeeded"`, no longer `phase: "uninitialized"`. It must still be root (§3) |
 
@@ -180,10 +181,13 @@ which decision was taken and why it is closed.
 
 ## 5. Cross-cutting decisions
 
-- **1Password as this repo's secretspec provider.** Vault `dev` holds
-  `NETCUP_CONSOLE` and `SSH Key`, and nothing else that is a static secret.
-  Which secrets does this build actually need? A short list beats a manifest
-  invented up front.
+- **1Password as this repo's secretspec provider.** Vault `dev`'s static
+  secrets, measured 2026-09-28: `SSH Key`, `TS_AUTH_KEY`, `GH_TOKEN`,
+  `OP_SERVICE_ACCOUNT_TOKEN`, `HERMES_API_SERVER_KEY`,
+  `CLOUDFLARE_API_TOKEN` (six items; `NETCUP_CONSOLE`, named in the previous
+  draft of this line, is not among them). Which of these does *this build*
+  actually need? A short list beats a manifest invented up front — and the
+  manifest's `TS_AUTH_KEY`-only declaration is currently the answer.
 - **What goes in the operator half of `devenv.nix`?** It is empty by design
   (one file, two consumers: `devenv shell` and `devenv machines`). Tooling
   graduates in only when it proves durable.
@@ -216,6 +220,36 @@ which decision was taken and why it is closed.
   `~/.hermes/.env` as `OP_SERVICE_ACCOUNT_TOKEN` (a copy also sits at
   `~/.config/op-sa-token`, mode 0600). `op vault list` → `dev`. Never
   `op item get --format json` an item: it does **not** redact.
+- **Three service-account tokens existed on 2026-09-28; know which is which.**
+  `~/.config/op-sa-token` (and the `~/.hermes/.env` copy) holds `ZYDSJ…` —
+  **read-only**; `op item create` fails `(101)`. The item
+  `Service Account Auth Token: dev` minted that morning (`Y6AH…`) was *also*
+  read-only — 1Password's web UI drops the write grant unless you click
+  outside the Permissions box (community-confirmed bug), and service-account
+  permissions are **immutable** afterwards. The one that **writes** is `S3Y3…`,
+  living in the item `OP_SERVICE_ACCOUNT_TOKEN`. `secretspec`/`devenv` only
+  ever *read*, so the file token still suffices for every `machines` command;
+  `S3Y3…` is what lets the agent create items.
+- **`op` extraction traps (measured 2026-09-28, each cost a failed probe):**
+  `op item get … --fields credential` **without `--reveal`** returns the
+  placeholder `[use 'op item get <id> --reveal' to reveal]`, not the value;
+  item `OP_SERVICE_ACCOUNT_TOKEN`'s value is the whole **assignment**
+  `OP_SERVICE_ACCOUNT_TOKEN=ops_…` — pass it unstripped and op fails with
+  `unrecognized auth type` (strip at the first `=`), and its field label is
+  `token`, not `credential`.
+- **A bb terminal pane inherits NO environment** — not the agent's, not the
+  daemon's, not another pane's exports. Anything pane-side must fetch its
+  token inside the pane; `scripts/bb-pane-run.sh` only backfills from
+  `~/.config/op-sa-token`. (`bb terminal create --thread <id> --title …
+  --command "bash <script>"`; read it back with `bb terminal output <id>
+  --json`, chunks under `dataBase64`. The pane dies when its command exits —
+  hand the PTY to `exec bash -i` to keep it readable.)
+- **The `op item create` form that works:** `--category "API Credential"`
+  (title case, space — `API_CREDENTIAL` is rejected), values via assignment
+  `credential=…` or JSON on stdin as `op item create --vault dev -`;
+  `--template=-` fails with "cannot create an item from template and stdin at
+  the same time". To hand a value to `op` without exposing it: dotenv →
+  python → **pipe** → stdin (never argv, never printed).
 - **`~/.ssh/config`** had the old repo's fragment included; it aborts *every*
   ssh call in a non-interactive environment because of a `${XDG_RUNTIME_DIR}`
   `IdentityAgent` line. The Include is now disabled (backup
@@ -264,3 +298,120 @@ which decision was taken and why it is closed.
 4. Which secrets does this build actually need, and do they go in 1Password?
 5. Is a second host (`oci`) in scope this year, or does the module shape stay
    single-host until it is?
+6. **What is `hbohlen`'s password FOR?** *(Asked 2026-09-28; not answered.)*
+   The ask was "a non-root user with passwordless sudo" — which **already
+   exists** (`users.users.hbohlen`, `wheel`, `wheelNeedsPassword = false`), so
+   the only delta is a usable password (`hashedPassword = "!"` locks it). But
+   sshd carries `PasswordAuthentication = false` +
+   `KbdInteractiveAuthentication = false`, and sudo needs no password — so a
+   password would gate nothing over SSH and no privilege. Options, with their
+   costs already reasoned: **(A)** inline `hashedPassword` — rejected on sight:
+   the repo is public *and* NixOS config is world-readable in `/nix/store`, so
+   the hash of a weak password is public forever, and if anyone later flips
+   `PasswordAuthentication` it is instant root; **(B)** interactive pause for
+   `passwd hbohlen` — the trap: the declared `hashedPassword = "!"` is
+   re-applied by activation, so a manual password is **re-locked on every
+   deploy** unless the lock marker is removed (then `mutableUsers` keeps it
+   across rebuilds); **(C)** `hashedPasswordFile` → root-`0600` file outside
+   the store, provisioned once, survives rebuilds, must be re-provisioned on
+   re-image. The answer depends on this question's real purpose: console
+   fallback? key-loss insurance (it isn't — SSH password auth is off)?
+7. **Does the host need `gh` at all?** *(Asked 2026-09-28; not answered.)*
+   Measured: the repo is **public** (`api.github.com` says
+   `visibility: public`), so the host's clone and `git pull --ff-only` are
+   anonymous — the `could not read Username` in `docs/self-deploy-netcup.md`
+   §1 is from `push --dry-run`, and the host is *designed* never to push. So
+   `GH_TOKEN` buys **nothing for today's loop**. It matters only if (a) the
+   repo goes private, or (b) `gh` is wanted on the host for API work — in
+   which case decide delivery: per-use `op read` under the host's D3
+   credential (no token at rest) vs `gh` configured at rest (root-`0600`),
+   and note `pkgs.gh` is not in `systemPackages` yet.
+8. **Add `GH_TOKEN` to `secretspec.toml`?** The ref shape is ready —
+   `GH_TOKEN = { providers = ["dev"], ref = { item = "GH_TOKEN", field =
+   "credential" } }` (measured: addressing works). Cost: one more secret on
+   the **every**-`machines`-invocation resolution path (already accepted for
+   `TS_AUTH_KEY`). The same change should rewrite `secretspec.toml`'s stale
+   "the service account is READ-ONLY … nothing in this repository writes to
+   the vault" comment — disproved 2026-09-28 (§9).
+9. **Token consolidation and one rotation decision.** The file token is the
+   old read-only one; the write token lives only in a vault item whose value
+   carries an assignment prefix; two stale `Service Account Auth Token: dev`
+   items were deleted 2026-09-28. Decide the canonical form (bare `ops_…`,
+   one item, file in sync). Separately: the write token was **pasted
+   plaintext into a pane** — it survives in bb's terminal scrollback (atuin's
+   history was checked: 0 hits; my scratch copy was shredded). Rotate it if
+   that residue matters; harmless if not.
+
+## 9. 2026-09-28 — vault write access, `GH_TOKEN`, and the pull premise
+
+Session type: explore-mode (OpenSpec `/openspec-explore`). **No repo file was
+touched** — `secretspec.toml` is unchanged, no `pkgs.gh` was added, no
+`hosts/netcup/*` edit, no change proposal written yet. Everything below is
+vault state or measured fact, and the decisions it opened are §8's Q6–Q9.
+
+### What landed (vault only)
+
+- **Write access, proven end-to-end.** A pane-side probe fetched the write
+  token from vault item `OP_SERVICE_ACCOUNT_TOKEN`, stripped its assignment
+  prefix, and ran create → read-back → delete green: probe item
+  `zm3yayzgfkpopljlrry2vmcjae` was created and removed again in pane
+  `term_bartuhtusg`. The token's integration is `S3Y3AKNFTJG75GMCLSSISCBC34`
+  — a *third* service account (file token `ZYDSJ…`, the morning's failed
+  `Y6AH…` item was deleted). Two `op item create`s run by the operator in
+  pane `term_jzyhshkinn` corroborated independently (both test items since
+  deleted; the vault stands at six items — §5).
+- **The `GH_TOKEN` item exists**: id `2kwzmxoczu2ztp7tb2xowciugu`, vault
+  `dev`, category `API_CREDENTIAL`, field `credential`. The value was
+  requested with `bb secret request GH_TOKEN --write-env …` (the agent never
+  saw it), moved dotenv → python → **stdin pipe** → `op item create`, and the
+  dotenv was shredded afterwards. It is a classic PAT: `ghp_…`, 40 chars,
+  scopes `repo workflow project codespace admin:public_key user` — no
+  `read:org`, which `gh auth status` flags but pulls never need.
+- **Authentication verified**, as the original ask required:
+  `GH_TOKEN=… gh auth status` → `✓ Logged in to github.com account hbohlen
+  (GH_TOKEN)`, and `gh api user` → `authenticated as hbohlen`. The
+  workstation's gh is 2.96.0 and *already* authenticated separately (an
+  `gho_` OAuth token in `~/.config/gh/hosts.yml`, which does have
+  `read:org`) — the vault PAT is the portable credential for the host /
+  secretspec, not a replacement for that one.
+
+### The premise this was all for — measured false
+
+The stated goal was *"so the netcup server can actually pull changes from the
+nix repo remote."* It already can: the repository is **public**
+(`api.github.com/repos/hbohlen/nix` → `visibility: public`), so the host's
+clone and `git pull --ff-only` need no credential at all, and the
+`could not read Username for 'https://github.com'` failure recorded in
+`docs/self-deploy-netcup.md` §1 comes from `push --dry-run` — a push the
+host is *designed* never to make (workstation authors, host pulls; risk R5's
+answer is the drift check). `GH_TOKEN` therefore changes nothing about
+today's loop; it is headroom for a private flip or host-side `gh` API work —
+which is exactly Q7.
+
+### The password request — parked at Q6
+
+The third ask of the session (a usable password for `hbohlen`) is fully
+reasoned but **unanswered**, because its purpose is unclear given
+`PasswordAuthentication = false` and `wheelNeedsPassword = false`. The three
+options and their traps are in §8 Q6 — most importantly: an inline hash in
+this *public* repo is public forever, and a `passwd` set by hand is
+**re-locked by the next deploy** while `hashedPassword = "!"` is declared.
+Do not implement any of the three until Q6's purpose question is answered.
+
+### Cleanup and exposure state, as handed over
+
+- The write token was pasted plaintext into a pane: bb's terminal scrollback
+  retains it, atuin's `history.db` was queried directly (**0 hits**), and the
+  agent's scratch copy was redacted then shredded. Rotation decision = Q9.
+- Leftover probe items: none (all created ones deleted — mine by the probe,
+  the operator's two by the operator).
+- Both panes — `term_jzyhshkinn` (the session's full scrollback) and
+  `term_bartuhtusg` (the green probe) — were **closed at the end of this
+  session**; the evidence ids above are the durable record.
+- Mechanically useful artifacts of the session — the `op` extraction traps,
+  the pane-inherits-nothing rule, the working `op item create` forms, and how
+  to read pane output back — are folded into **§6**, so they are not
+  rediscovered.
+rule, the working `op item create` forms, and how
+  to read pane output back — are folded into **§6**, so they are not
+  rediscovered.
