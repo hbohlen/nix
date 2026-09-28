@@ -25,8 +25,11 @@
 #     invisible even though activation put it there.
 #   * The SECRET and STATUS checks run as `root` at the host checkout, using the
 #     loop's D3 credential (`/root/.config/op-sa-token`) exactly as
-#     scripts/self-deploy-run.sh does. `hbohlen` has no vault credential on
-#     purpose (design D3/D4): the credential at rest is root-only.
+#     scripts/self-deploy-run.sh does. `hbohlen` HAS HAD ITS OWN 0600 COPY SINCE
+#     2026-09-28 (the host-first loop), so "the credential at rest is root-only"
+#     is no longer a fact about this host — these checks still read ROOT's copy
+#     on purpose: that is the file design D3 places, and a check of D3 has to
+#     read D3's file.
 #
 # KNOWN DETAILS THIS SCRIPT CODES IN (measured 2026-09-27/28):
 #   * `nix config show` is the check that the DECLARATION names the cache; a

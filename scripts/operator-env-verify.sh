@@ -21,10 +21,13 @@
 #     directory would otherwise be invisible even though activation put it there.
 #   * The SECRET and STATUS checks run as `root` at the host checkout, using the
 #     loop's D3 credential (`/root/.config/op-sa-token`) exactly as
-#     scripts/self-deploy-run.sh does. `hbohlen` has no vault credential on
-#     purpose (design D3/D4): the credential at rest is root-only. This is the
-#     identity design R3 asks about — if root's read-only credential cannot read
-#     `GH_TOKEN`, the self-deploy loop is broken by the declaration.
+#     scripts/self-deploy-run.sh does. `hbohlen` HAS HAD ITS OWN 0600 COPY SINCE
+#     2026-09-28 (the host-first loop), so "the credential at rest is root-only"
+#     is no longer a fact about this host — these checks still read ROOT's copy
+#     on purpose, because that is the file design D3 places and a check of D3 has
+#     to read D3's file. This is the identity design R3 asks about — if root's
+#     read-only credential cannot read `GH_TOKEN`, the self-deploy loop is
+#     broken by the declaration.
 #
 # KNOWN DETAILS THIS SCRIPT CODES IN (measured 2026-09-27/28):
 #   * `nix-build -p hello` DOES NOT EXIST. `-p`/`--packages` is a `nix-shell`
