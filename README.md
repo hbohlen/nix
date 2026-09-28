@@ -18,6 +18,7 @@ deploy — happens there, as `hbohlen`.
     # 2. commit and push (the gate refuses an unpublished commit)
     git add -A && git commit -m "<action> | <subject>"
     OP_SERVICE_ACCOUNT_TOKEN=$(cat ~/.config/op-sa-token) \
+      SECRETSPEC_REASON="push: <what changed>" \
       secretspec run -- git push origin main
 
     # 3. gate, then deploy
@@ -42,9 +43,13 @@ scripts redirects that invocation only.
 | loopback SSH key | `~/.ssh/id_ed25519-op-dev`, 0600 | authenticating as `root@localhost` for the deploy |
 | `GH_TOKEN` | vault only — `secretspec run -- git push` | GitHub, per invocation, never at rest (`~/.config/gh` does not exist) |
 
-Every `devenv machines` / `devenv eval` call also needs `SECRETSPEC_REASON`
-(`require_reason = true` in `secretspec.toml`), or it dies with a reason error
-that reads like a machine error.
+Every call that resolves the profile needs `SECRETSPEC_REASON` —
+`devenv machines`, `devenv eval` and `secretspec run` alike
+(`require_reason = true` in `secretspec.toml`). `devenv` forwards no reason flag
+of its own, so the environment variable is the only route. Without it the call
+dies with a reason error that reads like a machine error. Measured
+2026-09-28: the push step in the loop above failed for exactly this reason until
+the reason was added.
 
 **The sudo boundary does not separate `hbohlen` from these secrets.** The key
 and the token sit in that user's home at 0600; anything running as `hbohlen`
