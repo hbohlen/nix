@@ -87,4 +87,57 @@
     pkgs.git
     pkgs._1password-cli
   ];
+
+  # THE STORE MUST BE WRITABLE FOR THE HOST TO DO ANYTHING, AND AT BOOT IT IS
+  # NOT. This is the precondition the plan did not have, and it is the one that
+  # makes the whole change possible: the host has never been able to BUILD, only
+  # to receive copies.
+  #
+  # Measured on the live host 2026-09-27, after the credential landed and
+  # `devenv` got far enough to open the store:
+  #
+  #   findmnt -no OPTIONS /nix/store
+  #     -> ro,nosuid,nodev,noatime,compress=zstd:3,...,subvol=/@nix
+  #   touch /nix/store/.probe      -> Read-only file system
+  #   ./bin/devenv build machines.netcup
+  #     -> × Failed to open Nix store
+  #        error: cannot remount "/nix/store" writable: not in a private mount
+  #        namespace, so the remount would affect the host mount table
+  #
+  # `nix store add-path` and `nix build` are UNAFFECTED, which is why nothing
+  # caught this earlier: the cold path copies a closure in as root, and a copy
+  # needs no namespace. `devenv` links libnix in-process and refuses to remount a
+  # host mount table it does not own, so it aborts before evaluating anything.
+  #
+  # The mount is a read-only BIND of the store directory onto itself, created in
+  # the initrd (`/nix/store/store` does not exist, `findmnt` reports the source as
+  # `/dev/vda2[/@nix/store]`, and `systemctl cat nix-store.mount` finds no unit —
+  # only `/proc/self/mountinfo`). Stage 2 never remounts it because
+  # `/etc/fstab` — read back from the BUILT system — declares `/`, `/boot`,
+  # `/home`, `/nix` and `/var` and NOT `/nix/store`, so `systemd-remount-fs` has
+  # nothing to act on.
+  #
+  # WHY A UNIT AND NOT A `fileSystems` ENTRY: `mount -o remount,rw /nix/store` was
+  # measured to fix it immediately, and the host then built the SAME store path the
+  # workstation produces (`gvlgs2lj2gs7fcpyv85rp980dimv93dz-nixos-system-netcup-26.11pre-git`).
+  # Declaring `/nix/store` in `fileSystems` would instead mount the `@nix`
+  # subvolume root there — which is a different directory tree, because the live
+  # mount is a bind of the `store` subdirectory and `/nix/store/store` does not
+  # exist. That would silently reparent the store. This unit does one thing,
+  # ordered after `/nix` exists and before the daemon that would need it.
+  systemd.services.nix-store-remount-rw = {
+    description = "Remount /nix/store read-write (the initrd leaves it read-only)";
+    unitConfig = {
+      DefaultDependencies = false;
+      Requires = [ "nix.mount" ];
+      After = [ "nix.mount" ];
+      Before = [ "nix-daemon.service" ];
+    };
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${pkgs.util-linux}/bin/mount -o remount,rw /nix/store";
+    };
+  };
 }

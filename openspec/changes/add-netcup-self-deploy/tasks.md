@@ -127,30 +127,47 @@ attributed rather than guessed at.
       tracked against `.gitignore:15` and is now untracked —
       `.machines/netcup/facter.json`, the generated hardware report; it remains in
       the ancestry at 868f8c9 (design OQ1).**
-- [ ] 5.2 Clone to `/home/hbohlen/nix` on the host. `git` only — jj is not needed
+- [x] 5.2 Clone to `/home/hbohlen/nix` on the host. `git` only — jj is not needed
       to build or deploy.
       — Verify: the host's `git rev-parse HEAD` equals the pushed revision.
-- [ ] 5.3 Obtain the pinned toolchain from `devenv.cachix.org` and root it in the
+- [x] 5.3 Obtain the pinned toolchain from `devenv.cachix.org` and root it in the
       checkout, using `bin/devenv`'s documented command. It is measured present
       in that cache, so this is a download and not a Rust build.
       — Verify: `bin/devenv --version` on the host reports 2.4.0 or newer, and
       the substituted path is the same store path the workstation uses.
-- [ ] 5.4 Build the system on the host with the workstation unreachable.
+- [x] 5.4 Build the system on the host with the workstation unreachable.
       — Verify: `bin/devenv build machines.netcup` on the host prints a
       `nixos-system-netcup-*` path with the same name the workstation produces,
       and no remote builder participated.
+      **Done 2026-09-27. ORDER CORRECTED BY MEASUREMENT: this task cannot run
+      before 6.1. `devenv build` evaluates the Machine, a Machine resolves its
+      whole SecretSpec profile on every invocation, and the host without the
+      credential fails with `No accounts configured for use with 1Password CLI`
+      (exit 1, pane term_guqnzvkumu). With 6.1 in place it also needs R11 — the
+      store is read-only at boot, and `devenv` links libnix in-process and aborts
+      with `Failed to open Nix store` until it is remounted rw. Both fixed, the
+      clean run reports `store options: rw`, `remount unit: active`, exit 0.**
+      — Verify: with the unit active, `bin/devenv build machines.netcup` on the
+      host exits 0 and names the same `nixos-system-netcup-*` path the
+      workstation produces for the same revision, with no remote builder.
 
 ## 6. The SecretSpec profile on the host
 
-- [ ] 6.1 Establish the route chosen in 2.2: either the credential at rest
+- [x] 6.1 Establish the route chosen in 2.2: either the credential at rest
       (root-only `0600`, read-only scope) or the provider override.
       — Verify: the file's mode and owner are read back, and nothing prints the
       credential's value.
-- [ ] 6.2 Confirm a non-interactive `machines` invocation resolves the profile on
+      **Done 2026-09-27 at `/root/.config/op-sa-token`: `600 root:root`, 857
+      bytes, sha256 prefixes read back equal on both sides (`8ac84b12233484a7`)
+      without printing the value — the same path shape as the workstation's
+      `~/.config/op-sa-token`, so the one convention holds on both machines.**
+      — Verify: `stat -c '%a %U:%G' /root/.config/op-sa-token` is `600 root:root`,
+      and no command in the pane printed the value.
+- [x] 6.2 Confirm a non-interactive `machines` invocation resolves the profile on
       the host.
       — Verify: `bin/devenv machines info` at `/home/hbohlen/nix` on the host
       exits 0 unattended, listing the netcup machine.
-- [ ] 6.3 Confirm install-time delivery was not traded away and no new secret
+- [x] 6.3 Confirm install-time delivery was not traded away and no new secret
       value was written.
       — Verify: `secretspec.toml` still declares `TS_AUTH_KEY` and the Machine's
       `install.secrets` entry is unchanged; a sweep of the paths this change

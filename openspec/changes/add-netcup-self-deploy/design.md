@@ -347,6 +347,32 @@ someone else, or a script, runs the command.
   `pkgs._1password-cli` is declared in the host's self-deploy module. Consequence
   for the runbook: G1's deploy must carry the CLI, so a host that was bootstrapped
   before this finding needs one more deploy before any of group 6 can pass.
+- **[R11] The host's store is READ-ONLY at boot, and `devenv` cannot open it.**
+  Measured 2026-09-27. This is the precondition the plan did not have, and it is
+  the one that decides whether the change is possible at all: until it is fixed
+  the host can never BUILD, only receive copies.
+  `findmnt -no OPTIONS /nix/store` reports `ro,nosuid,nodev,...`;
+  `touch /nix/store/.probe` reports `Read-only file system`; and
+  `./bin/devenv build machines.netcup` fails with
+  `× Failed to open Nix store` / `error: cannot remount "/nix/store" writable:
+  not in a private mount namespace, so the remount would affect the host mount
+  table` — while `nix store add-path`, `nix build`, and the cold path's
+  `nix copy` all succeed. That asymmetry is why every earlier gate passed:
+  installation and deploy only ever COPY, as root, which needs no namespace.
+  `devenv` links libnix in-process and refuses to remount a mount table it does
+  not own, so it aborts before evaluating anything.
+  The mount is a read-only BIND of the store directory onto itself, created in
+  the initrd: `/nix/store/store` does not exist, `findmnt` names the source
+  `/dev/vda2[/@nix/store]`, and `systemctl cat nix-store.mount` finds no unit —
+  only `/proc/self/mountinfo`. Stage 2 never remounts it because `/etc/fstab`,
+  read back from the BUILT system, declares `/`, `/boot`, `/home`, `/nix` and
+  `/var` and not `/nix/store`, so `systemd-remount-fs` has nothing to act on. →
+  A declared oneshot unit remounts it `rw`, ordered `After = [ "nix.mount" ]` and
+  `Before = [ "nix-daemon.service" ]`. `mount -o remount,rw /nix/store` was
+  measured to fix it, and the host then built the SAME store path the workstation
+  produces (`gvlgs2lj2gs7...`). Declaring `/nix/store` in `fileSystems` was
+  rejected: the live mount is a bind of the `store` subdirectory, so an entry
+  would mount the `@nix` subvolume ROOT there and silently reparent the store.
 
 ## Migration Plan
 
@@ -359,7 +385,7 @@ cheapest-first, and each gate has a command whose output settles it.
 | G0 | Eval only, from the workstation | `bin/devenv machines info`, `machines check netcup`, `eval machines.netcup.build.nixos` — no host contact |
 | G1 | Bootstrap: deploy this change **from the workstation** (D7), landing the declared nix settings, `pkgs.git`, `pkgs._1password-cli` (R10, added after the first bootstrap), and the loopback authorization; then install the loopback private half at the declared identity path | `machines deploy netcup --yes`, then `machines status netcup`; the key file's mode and owner read back |
 | G2 | Isolated host probes, no devenv: nix features, a trusted/root identity, `ssh root@localhost`, and **R1's copy-to-self** | `nix store info --store ssh://root@localhost`; `nix copy --to ssh://root@localhost <present path>` — **both with `NIX_SSHOPTS` naming the declared loopback identity, or nix never finds it (R9)** |
-| G3 | Get the checkout onto the host and build there: clone (or `scp` before the remote exists), the pinned toolchain from `devenv.cachix.org`, then build | `bin/devenv build machines.netcup` → the same `nixos-system-netcup-*` name the workstation produces |
+| G3 | Get the checkout onto the host and build there: clone (or `scp` before the remote exists), the pinned toolchain from `devenv.cachix.org`, then build — **in that order but AFTER G4 and R11, measured: the build resolves the SecretSpec profile and needs a writable store, so the credential and the remount unit must both be in place first** | `bin/devenv build machines.netcup` → the same `nixos-system-netcup-*` name the workstation produces |
 | G4 | Vault resolution on the host, then the read-only machine operations over loopback | `machines info` exits 0 unattended; `machines check`/`status` against `root@localhost` |
 | G5 | The no-op self-deploy — the real end-to-end test, and R2's first exercise | `machines deploy netcup -O machines.netcup.target.host:string root@localhost --yes`, then `machines status netcup` → succeeded, not rolled back |
 | G6 | A real change, then a deliberate failure | add `pkgs.git`'s consumer or another trivial package and observe the change applied; then a configuration whose activation fails, and confirm the previous system is restored |
