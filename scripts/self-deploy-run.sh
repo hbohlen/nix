@@ -5,12 +5,11 @@
 # itself from the revision it holds, over its own loopback, with no workstation,
 # no vault session and no long-lived credential of the vault's on the host.
 #
-# IT IS NOT STARTED BY HAND ON THE HOST. The workstation-side entry point is
-# scripts/self-deploy-host.sh, which checks for drift first and then runs this
-# file over ssh; use that, in a pane:
-#   ./scripts/bb-pane-run.sh --title "self-deploy from the host" -- ./scripts/self-deploy-host.sh
+# RUN IT DIRECTLY, IN ORDER WITH THE GATE:
+#   ./scripts/self-deploy-drift.sh && bash scripts/self-deploy-run.sh
+# README.md is the runbook for that sequence.
 #
-# WHY IT EXISTS AS A FILE AND NOT AS A LINE IN THE PANE: the environment this
+# WHY IT EXISTS AS A FILE AND NOT AS A LINE IN A SHELL: the environment this
 # step needs is three variables that fail in three different ways when they are
 # missing, and every one of those failures looks like a broken host:
 #   * NIX_SSHOPTS        — without it the store copy over ssh://root@localhost is
@@ -70,7 +69,7 @@ step "this is running on the host the deploy targets"
 # reads exactly like a broken host and is not one. `read` is a bash builtin, so
 # it cannot be missing.
 read -r hostname </proc/sys/kernel/hostname || fail "cannot read /proc/sys/kernel/hostname"
-[ "$hostname" = "netcup" ] || fail "this script runs ON the netcup host (hostname is '$hostname'); from a workstation use scripts/self-deploy-host.sh"
+[ "$hostname" = "netcup" ] || fail "this script runs ON the netcup host (hostname is '$hostname')"
 printf '  hostname: %s\n' "$hostname"
 
 step "the environment this step needs"
@@ -126,7 +125,7 @@ else
   printf '       requested: %s\n       running:   %s\n' "$SYS" "$after"
   printf '       A deploy that failed its activation is rolled back to the previous\n'
   printf '       system, which is the safe outcome — read the status above for the\n'
-  printf '       recorded failure and cause, then see docs/self-deploy-netcup.md §rollback.\n'
+  printf '       recorded failure and cause, then see README.md (rollback).\n'
   [ "$rc" -eq 0 ] && rc=1
 fi
 

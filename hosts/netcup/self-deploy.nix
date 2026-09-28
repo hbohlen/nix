@@ -37,8 +37,8 @@
   # exactly what design D5 wants. Adding the operator account would be a
   # permanent, wider grant, spent on a loopback deploy that runs as root anyway.
   # A non-root copy already fails the trusted-signature check on this host
-  # (`require-sigs = true`), which is the failure docs/handoff-followups.md §3
-  # records from the non-root deploy attempt.
+  # (`require-sigs = true`), which is what a measured non-root deploy attempt
+  # died on: a non-root user on the TARGET is not a trusted signer.
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
   # THE CACHE THE TOOLCHAIN COMES FROM, DECLARED BY THE HOST RATHER THAN PASSED
@@ -169,9 +169,8 @@
   # is public, so none of this is a secret, and nothing in it is a credential.
   #
   # `branch` IS THE ONE PLACE THE LOOP'S BRANCH IS DECLARED. The scripts default
-  # to `main` in their environment and scripts/self-deploy-preflight.sh asserts
-  # that the default and this file agree, so the two cannot drift apart silently
-  # — which is the failure mode of a fact that is written down in two places.
+  # to `main` in their environment, so this file and that default have to be
+  # changed together — the failure mode of a fact that is written down twice.
   #
   # Measured 2026-09-28: this file is also task 7.4's real change — the
   # observable fact the host-side loop is proved to move (a new path in the
@@ -184,7 +183,7 @@
     checkout = "/home/hbohlen/nix";
     targetOverride = "machines.netcup.target.host:string root@localhost";
     loopbackKey = "/home/hbohlen/.ssh/id_ed25519-op-dev";
-    authored = "workstation; this host only pulls (scripts/self-deploy-drift.sh enforces it)";
+    authored = "this host; it authors, pushes and deploys (scripts/self-deploy-drift.sh refuses an unpublished commit)";
   };
 
   # THE STORE MUST BE WRITABLE FOR THE HOST TO DO ANYTHING, AND AT BOOT IT IS

@@ -33,8 +33,8 @@
 # devenv builds `pkgs` outside the module system and passes
 # `pkgs = inputs.nixpkgs.legacyPackages.<system>`, so writing nixpkgs.config in a
 # module fails eval with "Your system configures nixpkgs with an externally
-# created instance" — measured, and recorded in openspec/config.yaml. This is the
-# documented route. It is declared rather than left to `NIXPKGS_ALLOW_UNFREE` in
+# created instance" — measured. This is the documented route. It is declared
+# rather than left to `NIXPKGS_ALLOW_UNFREE` in
 # an operator's environment, for the reason design D6 gives: an ambient setting
 # is missing whenever a script or another operator runs the command.
 allow_unfree: true

@@ -6,11 +6,11 @@
 # one more thing between us and a first boot, and none of them help a host
 # partition its disk.
 #
-# Use `bin/devenv` (pinned 2.4.0), NEVER bare `devenv` — on this workstation.
-# The rule is workstation-only: the global profile binary is 2.2.2 and has no
-# `machines` subcommand, but on the netcup host the operator's home-manager role
-# installs a bare `devenv` at the SAME 2.4.0 (hosts/netcup/operator.nix), so
-# there the two names agree. See bin/devenv and docs/handoff-followups.md §6.
+# Use `bin/devenv` (pinned 2.4.0), NEVER bare `devenv` — on a workstation.
+# The rule is workstation-only: the global profile binary there is 2.2.2 and has
+# no `machines` subcommand. On this host the operator's home-manager role
+# installs a bare `devenv` at the SAME 2.4.0 (hosts/netcup/operator.nix), so the
+# two names agree and either works.
 {
   machines.netcup = {
     # What sets nixpkgs.hostPlatform. Devenv builds its own module list
@@ -37,11 +37,11 @@
     #
     # THE `-i` PATH IS MACHINE-LOCAL, AND IT MEANS A DIFFERENT KEY ON EACH
     # MACHINE THAT RUNS THIS DECLARATION. On a WORKSTATION it is the 1Password
-    # `dev` vault key (`op inject`ed per use; see docs/install-netcup.md), which
-    # is the only identity the freshly imaged target authorizes. On the HOST it
-    # is that host's own loopback key (design D4), installed there root-owned
-    # `0600`: a deploy run on the host targets `root@localhost`, and this
-    # declaration is what names the client identity for it.
+    # `dev` vault key, materialized at the moment of use, which is the only
+    # identity a freshly imaged target authorizes. On the HOST it is that host's
+    # own loopback key (design D4), installed there 0600: a deploy run on the
+    # host targets `root@localhost`, and this declaration is what names the
+    # client identity for it.
     #
     # ONE PATH, BECAUSE THE PER-INVOCATION ESCAPE HATCH IS CLOSED. `bin/devenv
     # machines deploy --help` reports `-O, --option <OPTION:TYPE> <VALUE>` with
@@ -71,13 +71,15 @@
     # the tree at all. `install.secrets` is written AFTER nixos-install and
     # BEFORE reboot, so a re-image enrolls the host on its first boot with no
     # operator in the loop. `deploy` does NOT refresh these files — there is no
-    # deploy-side equivalent — which is why the already-installed host's path is
-    # populated once by scripts/tailnet-enroll.sh instead.
+    # deploy-side equivalent — which is why an already-installed host's path is
+    # populated by a one-off enrollment step instead (the script that did it is
+    # in git history; the live host is already enrolled).
     #
     # The attribute name must equal services.tailscale.authKeyFile in
     # hosts/netcup/tailnet.nix. It is a STRING, never a Nix path literal: a path
     # literal copies its contents into the world-readable Nix store. The value
-    # never enters the store, and scripts/tailnet-preflight.sh proves it.
+    # never enters the store — proven by construction, since a path literal would
+    # be visible in `nix path-info` of the built system.
     #
     # `owner` is numeric because the installer cannot look up users in the system
     # it is installing into.

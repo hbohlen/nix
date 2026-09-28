@@ -9,7 +9,8 @@
 # It matters because the hardening change that follows closes public SSH, and a
 # configuration that closes public SSH is only survivable if the overlay comes up
 # unattended on the first boot after an install. On the already-installed host
-# this module's path is populated once by scripts/tailnet-enroll.sh instead,
+# this module's path is populated by a one-off enrollment step instead — that
+# script is in git history, and the live host is already enrolled —
 # because `deploy` does NOT refresh bootstrap files (measured: the Machine option
 # tree has install.{kexec,extraFiles,secretspec,secrets,encryptionKeys,copyHostKeys}
 # and no deploy-side equivalent; the docs say it outright).
@@ -19,8 +20,8 @@
 # the pinned nixpkgs, where `lib.types.path.check "/var/lib/tailscale/authkey"`
 # is true and `check "var/lib/..."` is false. A Nix path literal would be copied
 # into the world-readable Nix store, so it must stay a string. The same string is
-# the attribute name of the `install.secrets` entry in devenv.nix, and
-# scripts/tailnet-preflight.sh compares the two so they cannot drift.
+# the attribute name of the `install.secrets` entry in devenv.nix — one value in
+# two files, which have to be changed together.
 #
 # WHY /var/lib AND NOT /run: the module's own documented example is
 # "/run/secrets/tailscale_key", which is wrong for this use. `install.secrets`
@@ -48,8 +49,8 @@
     #
     # The TAG is deliberately NOT set here: it comes from the auth key minted in
     # the admin console (tag:server), so it exists only in the tailnet. It cannot
-    # be read out of this closure, and scripts/tailnet-verify.sh asserts it after
-    # enrollment from `tailscale status --json` — the one place it is visible.
+    # be read out of this closure; the only place it becomes visible is
+    # `tailscale status --json` after enrollment.
     extraUpFlags = [ "--hostname=nc" ];
 
     # `openFirewall` stays at its default `false`, so this change adds NO port.
@@ -82,7 +83,7 @@
   #
   # The unit still runs in every state that needs it: at the first boot after an
   # install (`install.secrets` writes the key before the reboot), and whenever
-  # `scripts/tailnet-enroll.sh` starts it once the key is in place.
+  # an operator starts it once the key is in place.
   #
   # `unitConfig` merges into the unit's [Unit] section, so this does not replace
   # anything the pinned tailscale module generated — the preflight greps the
