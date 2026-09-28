@@ -175,17 +175,28 @@ attributed rather than guessed at.
 
 ## 7. The self-deploy loop
 
-- [ ] 7.1 Run the read-only machine operations against the loopback target.
+- [x] 7.1 Run the read-only machine operations against the loopback target.
       — Verify: `bin/devenv machines check netcup -O
       machines.netcup.target.host:string root@localhost` and `machines status`
       with the same override both exit 0 and report the host's facts.
-- [ ] 7.2 Run the **no-op** self-deploy: the host currently matches its
+- [x] 7.2 Run the **no-op** self-deploy: the host currently matches its
       declaration (`Closure: +0 / -0`), so nothing new is started. This is the
       end-to-end proof and risk R2's first exercise.
       — Verify: `bin/devenv machines deploy netcup -O
       machines.netcup.target.host:string root@localhost --yes` completes, and
       `machines status netcup` reports succeeded, not rolled back.
-- [ ] 7.3 Confirm the running system is the one built on the host.
+      **Done 2026-09-27 on the host over `root@localhost` (pane
+      term_gmr9rc85zk), after the checkout was brought to the pushed tip
+      `6ab24452` with 0 dirty paths. The host's own deploy reported
+      `Closure: +0 / -0`, `copying 0 paths...`, `netcup: deployed`, exit 0 in
+      5.16 s, and `machines status` then reported `phase: succeeded` with
+      `previousSystem == requestedSystem` — not rolled back, so R2's control
+      channel survived activation. `NIX_SSHOPTS` naming the declared loopback
+      identity was required throughout (R9), and the store had to be `rw` via
+      R11's unit. The running system is `zzh5rm53kfgwyg9x5r6fc0db22zbz6y2`, the
+      same path the host built itself and the workstation built for the same
+      revision.**
+- [x] 7.3 Confirm the running system is the one built on the host.
       — Verify: `readlink -f /run/current-system` on the host equals the store
       path 5.4's build produced.
 - [ ] 7.4 Deploy a real change from the host and observe it applied.
