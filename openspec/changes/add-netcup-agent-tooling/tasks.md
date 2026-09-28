@@ -78,19 +78,19 @@ the eval/check gates in group 2 pass, and every host-touching task runs through
 
 ## 3. Host checks and first application (all pane-wrapped)
 
-- [ ] 3.1 **Read-only pre-deploy probe** (check gate for the deploy):
+- [x] 3.1 **Read-only pre-deploy probe** (check gate for the deploy):
       `scripts/bb-pane-run.sh --title "agent-tooling preflight" -- ssh -i ~/.ssh/id_ed25519-op-dev -o IdentitiesOnly=yes -o BatchMode=yes root@152.53.92.126 'grep -E "substituters|trusted" /etc/nix/nix.conf'`
       → report the pane session id; record the substituter baseline (expected:
       `cache.nixos.org` + `devenv.cachix.org`, `trusted-users = root`).
-- [ ] 3.2 **Host credential gate** (pane): at the host checkout,
+- [x] 3.2 **Host credential gate** (pane): at the host checkout,
       `./bin/devenv machines info` exits 0 — the declaration does not break the
       self-deploy loop's profile resolution (no secret was added, so this should
       be unchanged; verify rather than assume).
-- [ ] 3.3 **Deploy** (pane): run the routine host-side loop,
+- [x] 3.3 **Deploy** (pane): run the routine host-side loop,
       `scripts/bb-pane-run.sh --title "agent-tooling deploy" -- ./scripts/self-deploy-host.sh`
       → system role applies the `nix.settings` change first, home-manager then
       symlinks the two packages as `hbohlen`; report the pane session id.
-- [ ] 3.4 **Post-deploy verification** (pane, one run): a script (new, or an
+- [x] 3.4 **Post-deploy verification** (pane, one run): a script (new, or an
       extension of `scripts/operator-env-verify.sh`) asserting, per spec
       scenarios:
       `hermes --version` and `herdr --version` as `hbohlen` report a version;
