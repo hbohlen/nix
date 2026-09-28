@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/agent-tooling-verify.sh — read-only evidence that the operator account
 # on the host carries the agent tooling, checked from the workstation.
 #

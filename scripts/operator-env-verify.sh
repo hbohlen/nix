@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/operator-env-verify.sh — read-only evidence that the operator account
 # on the host has its user environment, checked from the workstation.
 #

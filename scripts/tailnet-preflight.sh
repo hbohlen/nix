@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/tailnet-preflight.sh — the gates for add-netcup-tailnet, in order.
 #
 # This is the runbook form of openspec/changes/archive/2026-09-27-add-netcup-tailnet/tasks.md

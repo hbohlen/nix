@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/postinstall-verify.sh — post-install evidence for the netcup Machine.
 #
 # The runbook form of docs/install-netcup.md step 6. Reads only; the reboot

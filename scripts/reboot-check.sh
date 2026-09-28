@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/reboot-check.sh — task 8.6: the host must come back on its own.
 #
 # An unattended UEFI boot is the point of the whole disk layout

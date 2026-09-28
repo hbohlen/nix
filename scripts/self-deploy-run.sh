@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/self-deploy-run.sh — the deploy step of the loop, RUN ON THE HOST.
 #
 # This is the file that makes the change's headline true: the host rebuilds

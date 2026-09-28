@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/self-deploy-host.sh — the workstation-side entry to the host-side loop.
 #
 # Runs IN A PANE, so the operator watches the host rebuild itself instead of

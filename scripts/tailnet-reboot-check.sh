@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/tailnet-reboot-check.sh — the host must rejoin the tailnet by itself.
 #
 # This is the check that decides whether add-netcup-tailnet actually bought what

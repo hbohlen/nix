@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/preflight.sh — the pre-install gates, in order, for the netcup Machine.
 #
 # This is the runbook form of docs/install-netcup.md steps 1-4. It touches

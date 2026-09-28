@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/tailnet-enroll.sh — the one step that changes the host's tailnet
 # membership: put the auth key at the declared path, then let the machine's own
 # unit use it.

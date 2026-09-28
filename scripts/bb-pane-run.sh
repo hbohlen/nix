@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/bb-pane-run.sh — run a command from this repository in a bb terminal
 # pane, so the operator can watch it instead of reading it back afterwards.
 #

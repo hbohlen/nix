@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/self-deploy-drift.sh — is the host's checkout the published revision?
 #
 # Risk R5, and task 8.3. The host holds a checkout of this repository and is

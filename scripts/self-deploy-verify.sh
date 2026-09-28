@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/self-deploy-verify.sh — read-only evidence that the host can rebuild
 # itself, as it now stands.
 #

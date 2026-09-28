@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/self-deploy-preflight.sh — the workstation-side gates for
 # add-netcup-self-deploy, in order.
 #

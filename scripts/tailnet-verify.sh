@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/tailnet-verify.sh — read-only evidence for add-netcup-tailnet.
 #
 # The runbook form of openspec/changes/archive/2026-09-27-add-netcup-tailnet/tasks.md groups 5-9.
