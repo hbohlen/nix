@@ -119,5 +119,5 @@ the eval/check gates in group 2 pass, and every host-touching task runs through
       vault's `HERMES_API_SERVER_KEY` consumer is named as an open follow-up (not
       declared here), and note the second declared cache.
       Verify: `grep -n 'HERMES_API_SERVER_KEY\|cache.numtide.com' docs/handoff-followups.md`.
-- [ ] 4.5 Final validation and closure: `openspec validate --all --strict` → all
+- [x] 4.5 Final validation and closure: `openspec validate --all --strict` → all
       specs and this change pass; archive when the host is verified.
