@@ -6,13 +6,17 @@
 #   ./scripts/bb-pane-run.sh --title "self-deploy from the host" -- ./scripts/self-deploy-host.sh
 #
 # WHAT IT DOES, IN ORDER, AND WHY IN THAT ORDER:
-#   1. scripts/self-deploy-drift.sh — the host must already hold the PUBLISHED
-#      revision. A deploy run on a checkout that is behind, or that carries an
-#      edit only the host has, would build a system nobody can reproduce, and it
-#      would report success while doing it. Risk R5.
+#   1. scripts/self-deploy-drift.sh --fast-forwardable — the host must be CLEAN,
+#      and the published revision must descend from what it holds. It is normally
+#      BEHIND (a push just happened — that is why this script is being run), and
+#      behind is fine here because step 2 fixes exactly that. What is not fine,
+#      and stops the run, is an edit only the host has: that would build a system
+#      nobody can reproduce, while reporting success. Risk R5.
 #   2. `git pull --ff-only` on the host — the only write this script makes that
 #      is not the deploy itself, and it can only fast-forward: a divergent host
-#      checkout is a question for a person, not something to merge through.
+#      checkout is a question for a person, not something to merge through. Then
+#      the STRICT drift check again, which is the state a reader should expect
+#      when a deploy lands.
 #   3. scripts/self-deploy-run.sh — ON the host, over ssh, under the host's own
 #      loopback identity. That file sets the three variables the step needs and
 #      reads back what the target recorded.
@@ -46,12 +50,15 @@ fail() { printf '\nSELF-DEPLOY ABORTED: %s\n' "$*" >&2; exit 1; }
 
 [ -r "$KEY" ] || fail "$KEY missing — materialize it (docs/install-netcup.md step 1)"
 
-step "1. the drift check (the host must hold the published revision)"
-"$REPO/scripts/self-deploy-drift.sh" || fail "the host's checkout is not the published revision — fix that first, then run this again"
+step "1. the drift check (the host must be clean, and able to reach the published revision)"
+"$REPO/scripts/self-deploy-drift.sh" --fast-forwardable \
+  || fail "the host carries uncommitted work, or commits nobody else has — settle that before deploying from it (see the check's output above)"
 
 step "2. the host updates its checkout, fast-forward only"
 rsh "git -C $HOST_REPO pull --ff-only" || fail "git pull --ff-only on the host"
 rsh "git -C $HOST_REPO log --oneline -1; git -C $HOST_REPO status --porcelain | head"
+"$REPO/scripts/self-deploy-drift.sh" \
+  || fail "the host is still not at the published revision after pulling — the strict check above says why"
 
 step "3. the deploy, run ON the host against root@localhost"
 rsh "cd $HOST_REPO && bash scripts/self-deploy-run.sh"
