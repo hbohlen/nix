@@ -80,8 +80,15 @@ step "the host's own build of the declaration in the checkout"
 before=$(readlink -f /run/current-system)
 printf '  running now: %s\n' "$before"
 SYS=$(devenv eval machines.netcup.build.nixos --no-tui 2>/dev/null \
-      | python3 -c 'import json,sys; print(json.load(sys.stdin)["machines.netcup.build.nixos"])') \
-  || fail "eval machines.netcup.build.nixos"
+      | grep -oE '/nix/store/[a-z0-9]+-nixos-system-netcup[^"]*' | head -1)
+# NO python3 PARSES THE EVAL HERE, ON PURPOSE. The host's system packages are
+# deliberately minimal — hosts/netcup/self-deploy.nix adds `git` and
+# `_1password-cli` and nothing else — so the host has no python3 at all.
+# Measured 2026-09-28: the first run of this file died here with
+# `python3: command not found`, and the output read like a broken eval rather
+# than a missing interpreter on the host. A grep for the store path is what the
+# host's own toolset can do; keep it that way.
+[ -n "$SYS" ] || fail "evaluating machines.netcup.build.nixos produced no store path — read the eval output above"
 printf '  requested:   %s\n' "$SYS"
 
 step "the deploy"

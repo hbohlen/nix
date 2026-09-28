@@ -96,6 +96,11 @@ if bad: print("  DRIFT: "+"; ".join(bad), file=sys.stderr); sys.exit(1)
 PY
 
 step "4. the closure builds, and the built system is the one the host rebuilds"
+# The BUILD comes first, and the eval after it: `eval machines.netcup.build.nixos`
+# prints a store path whether or not anything built it, so a gate that only
+# evaluates proves nothing about the closure (measured 2026-09-28 — the eval of
+# the loop-record change printed 18ml7pjxf4s6…, which no one had built).
+devenv build machines.netcup >/dev/null || fail "local build of machines.netcup"
 SYS=$(evalattr machines.netcup.build.nixos) || fail "eval machines.netcup.build.nixos"
 printf '  system: %s\n' "$SYS"
 # 7.2/7.3 measured this exact path on the host (zzh5rm53…) for revision 6ab24452,
@@ -162,6 +167,32 @@ if fw["allowedTCPPortRanges"]!=[]: bad.append("allowedTCPPortRanges not empty")
 if ssh["rootLogin"]!="prohibit-password": bad.append("rootLogin changed — that is the hardening change's business, not this one")
 if f["hostname"]!="netcup": bad.append("hostname != netcup")
 if bad: print("  DRIFT: "+"; ".join(bad), file=sys.stderr); sys.exit(1)
+PY
+
+step "10. the loop's declared parameters agree with the scripts that read them"
+# The branch is the one fact that exists both in the declaration (which the host
+# carries) and in the scripts (which the workstation runs), so it is the one that
+# can silently disagree. The scripts' default is read out of the drift check,
+# because that is the file whose verdict a deploy depends on.
+LOOPJSON="$SYS/etc/netcup-self-deploy/loop.json"
+[ -f "$LOOPJSON" ] || fail "$LOOPJSON is absent from the built system — hosts/netcup/self-deploy.nix no longer declares the host's record of the loop"
+script_branch=$(sed -n 's/^BRANCH=${BRANCH:-\([^}]*\)}.*/\1/p' "$REPO/scripts/self-deploy-drift.sh" | head -1)
+[ -n "$script_branch" ] || fail "could not read BRANCH's default out of scripts/self-deploy-drift.sh — this gate cannot compare anything"
+python3 - "$LOOPJSON" "$script_branch" <<'PY' || fail "the host's record of the loop and the scripts disagree"
+import json,sys
+path,script_branch=sys.argv[1],sys.argv[2]
+d=json.load(open(path))
+print("  %s"%json.dumps(d,sort_keys=True))
+want={"repository","branch","checkout","targetOverride","loopbackKey","authored"}
+extra=set(d)-want
+if extra: print("  FAIL unexpected keys: %s — a field added here is a field nothing checks"%" ".join(sorted(extra))); sys.exit(1)
+missing=want-set(d)
+if missing: print("  FAIL missing keys: %s"%" ".join(sorted(missing))); sys.exit(1)
+if d["branch"]!=script_branch:
+    print("  FAIL the host declares branch %r; the scripts check %r"%(d["branch"],script_branch)); sys.exit(1)
+if d["targetOverride"]!="machines.netcup.target.host:string root@localhost":
+    print("  FAIL targetOverride is not the loopback override: %r"%d["targetOverride"]); sys.exit(1)
+print("  OK   branch %r is the one the drift check expects, and the override is the loopback"%(script_branch,))
 PY
 
 printf '\nALL GATES GREEN.\n'

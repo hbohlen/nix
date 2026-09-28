@@ -88,6 +88,31 @@
     pkgs._1password-cli
   ];
 
+  # THE HOST'S OWN RECORD OF THE LOOP.
+  #
+  # `/etc/netcup-self-deploy/loop.json` answers the question an operator asks a
+  # host nobody built by hand: where does this system come from? The repository
+  # is public, so none of this is a secret, and nothing in it is a credential.
+  #
+  # `branch` IS THE ONE PLACE THE LOOP'S BRANCH IS DECLARED. The scripts default
+  # to `main` in their environment and scripts/self-deploy-preflight.sh asserts
+  # that the default and this file agree, so the two cannot drift apart silently
+  # — which is the failure mode of a fact that is written down in two places.
+  #
+  # Measured 2026-09-28: this file is also task 7.4's real change — the
+  # observable fact the host-side loop is proved to move (a new path in the
+  # closure, then a file on the running system). Every earlier deploy in this
+  # change was a no-op, which proves the path but not that the path can change
+  # anything.
+  environment.etc."netcup-self-deploy/loop.json".text = builtins.toJSON {
+    repository = "https://github.com/hbohlen/nix";
+    branch = "main";
+    checkout = "/home/hbohlen/nix";
+    targetOverride = "machines.netcup.target.host:string root@localhost";
+    loopbackKey = "/home/hbohlen/.ssh/id_ed25519-op-dev";
+    authored = "workstation; this host only pulls (scripts/self-deploy-drift.sh enforces it)";
+  };
+
   # THE STORE MUST BE WRITABLE FOR THE HOST TO DO ANYTHING, AND AT BOOT IT IS
   # NOT. This is the precondition the plan did not have, and it is the one that
   # makes the whole change possible: the host has never been able to BUILD, only
