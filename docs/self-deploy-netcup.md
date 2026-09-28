@@ -69,6 +69,15 @@ On the **host** (all of it declared, all of it read back by
 | the credential at `/root/.config/op-sa-token` (root `0600`) and the operator's copy at `~/.config/op-sa-token` (operator `0600`, added 2026-09-28) | task 6.1; the operator copy with the host-first loop | the profile cannot resolve — whichever user runs the command needs a readable copy |
 | the loopback identity at `/home/hbohlen/.ssh/id_ed25519-op-dev`, operator `0600` (was root `0600` until 2026-09-28) | task 3.3 (design D4); owner moved with the loop | `root@localhost` refuses the client |
 
+**The trust boundary moved, and it is worth saying plainly.** Nothing gained
+privilege — `hbohlen` already had passwordless sudo — but the sudo boundary no
+longer *separates* the working user from the two secrets the loop needs: the
+loopback key (which authenticates as root on the loopback) and the read-only
+service-account token both sit in `hbohlen`'s home at `0600`. Anything running
+as `hbohlen`, an agent session included, can use them directly, with no
+escalation step in between. That is the deliberate cost of running the loop as
+this user; it is not a capability that did not already exist behind `sudo`.
+
 Run the workstation-side gates first. They touch nothing on the host:
 
     ./scripts/self-deploy-preflight.sh
