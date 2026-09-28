@@ -24,6 +24,21 @@
 #
 # ADD INPUTS BY HAND. `devenv inputs add` rewrites this file and drops every
 # comment in it (measured 2026-09-27).
+#
+# allow_unfree — REQUIRED BY THE HOST'S `op`, AND WHY IT IS DECLARED HERE.
+# The host's self-deploy module puts the 1Password CLI on the machine
+# (`pkgs._1password-cli`, mainProgram `op`), because SecretSpec's 1Password
+# provider is a wrapper around the `op` binary and resolves nothing without it.
+# That package is unfree, and a Machine module may NOT set `nixpkgs.config`:
+# devenv builds `pkgs` outside the module system and passes
+# `pkgs = inputs.nixpkgs.legacyPackages.<system>`, so writing nixpkgs.config in a
+# module fails eval with "Your system configures nixpkgs with an externally
+# created instance" — measured, and recorded in openspec/config.yaml. This is the
+# documented route. It is declared rather than left to `NIXPKGS_ALLOW_UNFREE` in
+# an operator's environment, for the reason design D6 gives: an ambient setting
+# is missing whenever a script or another operator runs the command.
+allow_unfree: true
+
 secretspec:
   enable: true
   provider: dev

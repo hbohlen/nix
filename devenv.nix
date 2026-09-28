@@ -29,13 +29,24 @@
     target.host = "root@152.53.92.126";
 
     # WHICH IDENTITY THE INSTALLER/ACTIVATOR USES. ssh's default lookup would
-    # offer this workstation's own ~/.ssh/id_ed25519, which the target does NOT
-    # authorize — the host trusts the 1Password `dev` vault key only. The
-    # materialized vault key therefore has to be named explicitly.
+    # offer the invoking machine's own ~/.ssh/id_ed25519, which the target does
+    # NOT authorize — so the identity has to be named explicitly.
     #
-    # This is a WORKSTATION-LOCAL path (the key is `op inject`ed per use; see
-    # docs/install-netcup.md) — it is not a fact about the host, and it must be
-    # re-materialized on any other workstation that runs this.
+    # THE `-i` PATH IS MACHINE-LOCAL, AND IT MEANS A DIFFERENT KEY ON EACH
+    # MACHINE THAT RUNS THIS DECLARATION. On a WORKSTATION it is the 1Password
+    # `dev` vault key (`op inject`ed per use; see docs/install-netcup.md), which
+    # is the only identity the freshly imaged target authorizes. On the HOST it
+    # is that host's own loopback key (design D4), installed there root-owned
+    # `0600`: a deploy run on the host targets `root@localhost`, and this
+    # declaration is what names the client identity for it.
+    #
+    # ONE PATH, BECAUSE THE PER-INVOCATION ESCAPE HATCH IS CLOSED. `bin/devenv
+    # machines deploy --help` reports `-O, --option <OPTION:TYPE> <VALUE>` with
+    # supported types `string, int, float, bool, path, pkg, pkgs` — none of them
+    # replaces a string list, so `sshOpts` cannot be overridden per invocation.
+    # And `IdentitiesOnly=yes` below disables ssh's default key lookup, so a key
+    # at any other path is invisible to this declaration. The declaration
+    # therefore has to be right on both machines rather than right per call.
     target.sshOpts = [
       "-i"
       "/home/hbohlen/.ssh/id_ed25519-op-dev"

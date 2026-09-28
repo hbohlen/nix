@@ -37,9 +37,13 @@ so there is still exactly one Machine declaration and no local/remote drift.
   the probes; the durable form is a declared setting.
 - **New:** a deploy identity on the host. Measured: `/root/.ssh/` is empty, so
   `ssh root@localhost` returns `Permission denied (publickey)` and
-  `nix store ping --store ssh://root@localhost` fails to start the connection.
+  `nix store info --store ssh://root@localhost` fails to start the connection.
   Self-deploy cannot work until a private key exists on the host whose public
-  half root authorizes.
+  half root authorizes. The identity is a loopback-only keypair whose private
+  half is installed at the path the one `sshOpts` declaration already names —
+  that path is the vault key on a workstation and the loopback key on the host —
+  because the measured `-O` override types cannot replace a string-list option
+  and so cannot redirect `sshOpts` per invocation (design D4).
 - **New:** the host is a trusted nix user (or the deploy runs as root, which it
   must anyway). Measured: `trusted-users = root` in `/etc/nix/nix.conf`, so a
   non-root copy to the host's store fails the signature check — the same failure
@@ -59,7 +63,8 @@ so there is still exactly one Machine declaration and no local/remote drift.
   `install`, no re-image, no new port, no new secret item in the vault.
 - **Dropped relative to `~/projects/nixos`:** nothing, because there is nothing
   to drop — a search of that repository for `self-deploy`, `self-host`,
-  `root@localhost` finds no match in its tracked files. The reference never
+  `root@localhost` finds no relevant match in its tracked files — the only hit
+  is the substring "self-hosted" in an unrelated skills document. The reference never
   deployed from the host; this change is not inheriting a mechanism, it is
   acquiring one.
 - **Contradicted relative to `~/projects/nixos`, deliberately and narrowly:**
@@ -93,7 +98,9 @@ worth stating so it can be disagreed with explicitly:
 - *`netcup-machine` — "Remote access is key-only SSH on the target's public
   address."* Unchanged. It already authorizes the operator's ed25519 key for
   root "because the `devenv machines` install and deploy paths require root
-  SSH", and the new loopback path uses that same identity. It scopes itself to
+  SSH", and the new loopback path adds a second authorized key for that same root
+  account (design D4) — no new authentication method, only a second key. It
+  scopes itself to
   the target's *public address*; a loopback deploy target is a different
   surface and belongs to the new capability. What this change does do is make
   that requirement **permanent** — after it, root SSH can never be closed — and

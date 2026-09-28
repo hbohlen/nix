@@ -12,6 +12,12 @@
 # Adding tailscale changes NO firewall policy: the module's `openFirewall` stays
 # false, so the facts below are unchanged.
 #
+# THE SELF-DEPLOY PRECONDITIONS ARE DECLARED IN ./self-deploy.nix, ALSO IMPORTED
+# HERE: the host's `nix.settings` (this host had no `experimental-features` at
+# all) and the `git` the clone step needs. The loopback deploy identity's public
+# half is NOT in that module — it is authorized for root below, next to the
+# operator key, so both of root's identities are declared in one place.
+#
 # NO FIREWALL POLICY IS DECLARED HERE, and none is needed: the nixpkgs defaults
 # already give a default-deny firewall with sshd's port opened
 # (`services.openssh.openFirewall` defaults to `true` in this nixpkgs) — read
@@ -39,12 +45,34 @@ let
   # committed here, carried in an environment variable, or written to the Nix
   # store.
   operatorKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFnHjjZoYIy3ioATMm7DUffyL4f3lE/zB43NXgR49iXO netcup-devenv";
+
+  # The host's OWN identity, for the loopback deploy target (`root@localhost`)
+  # and for nothing else — design D4. A `devenv machines deploy` run ON this
+  # host contacts `root@localhost`, so the host needs a client identity that
+  # depends on no other machine, no vault session and no agent.
+  #
+  # It is a distinct key on purpose. `devenv.nix`'s single `target.sshOpts`
+  # declaration names the path `-i /home/hbohlen/.ssh/id_ed25519-op-dev` with
+  # `IdentitiesOnly=yes`, so a key at any OTHER path is invisible to it; the
+  # private half of THIS pair is installed at that path on the host (the vault
+  # key's path on a workstation), which is what makes one declaration mean the
+  # right thing on both machines. Materializing the 1Password `SSH Key` here
+  # instead was rejected: it would collide with the very path this needs, and
+  # would put the vault's identity at rest on a public VPS for a loop that only
+  # ever crosses the loopback.
+  #
+  # Public half only, exactly like ./operatorKey above. The private half is
+  # generated outside this repository, installed on the host root-owned `0600`,
+  # and never committed, injected or copied into the Nix store.
+  # Fingerprint: SHA256:WgXJgoyQQ9pTLPVcWL31pnzNFPo/qR0zSPXmj6PEK8I
+  loopbackKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEfjyi+/cIrYLu/Qm398sSNZQb8/cnBIpD2ztpo1ghGV netcup-loopback";
 in
 {
   imports = [
     ./disko.nix
     ./hardware.nix
     ./tailnet.nix
+    ./self-deploy.nix
   ];
 
   # The operator account. `hashedPassword = "!"` is a shadow lock marker: no
@@ -59,7 +87,22 @@ in
   # Root is reachable with the SAME key because `devenv machines install` and
   # `deploy` require root SSH. There is no root password — see
   # PermitRootLogin = "prohibit-password" below, which permits key auth only.
-  users.users.root.openssh.authorizedKeys.keys = [ operatorKey ];
+  #
+  # Root carries TWO key-only identities, and the second is deliberate: the
+  # operator's key (public path) plus the host's own loopback key (design D4),
+  # which is what a deploy run ON the host uses against `root@localhost`. This
+  # adds no authentication METHOD — both are key-only, and
+  # `PermitRootLogin = "prohibit-password"` still refuses every password — only
+  # a second key that is meaningful exactly on the loopback interface.
+  #
+  # Consequence, recorded so it is not rediscovered later: because this path is
+  # load-bearing, `PermitRootLogin` can no longer simply be closed, and any
+  # later `Match Address` restriction has to keep `127.0.0.1` reachable or it
+  # silently breaks the self-deploy loop (risk R7).
+  users.users.root.openssh.authorizedKeys.keys = [
+    operatorKey
+    loopbackKey
+  ];
 
   # The operator escalates with sudo, not by logging in as root.
   security.sudo.wheelNeedsPassword = false;

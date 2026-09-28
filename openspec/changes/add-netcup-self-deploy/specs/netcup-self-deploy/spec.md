@@ -84,13 +84,16 @@ SHALL be declared in this repository, not applied by hand on the live host.
 
 The host SHALL hold a private key whose public half it authorizes for `root`,
 so that `root@localhost` authenticates without an agent, a password, or an
-operator at a prompt. The key SHALL NOT be committed to the repository and SHALL
-NOT be copied into the Nix store.
+operator at a prompt. The private half SHALL live at the path the repository's
+single `target.sshOpts` declaration names, so no per-invocation override is
+needed, and it SHALL NOT be committed to the repository and SHALL NOT be copied
+into the Nix store.
 
 #### Scenario: Loopback root login succeeds without an agent
 
-- **WHEN** `ssh -o BatchMode=yes -o IdentitiesOnly=yes` connects to
-  `root@localhost` on the host, with no agent available
+- **WHEN** `ssh -o BatchMode=yes -o IdentitiesOnly=yes -i
+  /home/hbohlen/.ssh/id_ed25519-op-dev` connects to `root@localhost` on the
+  host, with no agent available
 - **THEN** the login succeeds and reports uid 0
 
 #### Scenario: The loopback target is a reachable nix store
@@ -234,20 +237,15 @@ login.
 ### Requirement: The self-deploy loop is documented and its evidence is re-readable
 
 The repository SHALL carry a procedure for the host-side loop — clone, edit,
-build, deploy, verify — naming each step with the command that verifies it, and
-host-touching steps SHALL run where the operator can watch them.
+build, deploy, verify — naming each step with the command that verifies it.
+Host-touching steps are governed by `netcup-operations`' watchability
+requirement, not re-declared here.
 
 #### Scenario: The procedure names its verification
 
 - **WHEN** the procedure document is read
 - **THEN** every step names a command whose output establishes that the step
   succeeded
-
-#### Scenario: Host-touching steps are watchable
-
-- **WHEN** a step that writes to the host is run
-- **THEN** it runs in an operator-visible pane and the session identifier is
-  reported with the result
 
 #### Scenario: The loop's record outlives the session
 
