@@ -611,3 +611,17 @@ input (rev `e28ea84e…`) that deliberately does **not** follow `nixpkgs`. It is
   2026-09-28: the ambient workstation config builds 17 derivations; supplying
   the cache per-invocation builds 0). The host is unaffected once the declaration
   above lands.
+- **THE FIRST APPLICATION CANNOT COME FROM THE HOST-SIDE LOOP, AND WHY
+  (measured 2026-09-28).** `devenv machines deploy` builds the WHOLE plan before
+  it activates any role — `machines_plan` in devenv 2.4.0 builds the `nixos`
+  role and then `build_machine_role("home-manager")` (machines.rs, ~line 2530)
+  before the first write. So on the host's first deploy of this change its
+  `nix.conf` does NOT yet carry `cache.numtide.com` (that arrives with the
+  system role's activation), and the home-manager build would compile
+  `hermes-agent` from source — R3, on the live host. The design's claim that the
+  host-side loop "exercises the host's own declared cache" is therefore false
+  for the FIRST application. The change was applied via the design's documented
+  fallback: a workstation `machines deploy` (the workstation has the D4 cache,
+  so it downloaded and copied the closure), after which the host-side loop runs
+  clean and idempotent. A future change should either pre-copy the closure or
+  apply the `nix.settings` half one deploy ahead.
