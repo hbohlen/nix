@@ -129,11 +129,23 @@ resolve the same profile the workstation resolves.
 - **THEN** the manifest is still present and still declares `TS_AUTH_KEY`, so the
   property that an install enrolls the host unattended is intact
 
-#### Scenario: No new secret value is written anywhere
+#### Scenario: No secret value is written anywhere it could be read
 
-- **WHEN** the paths this change adds on the host are searched for secret values
+- **WHEN** the paths this change adds on the host, the repository and the Nix
+  store are searched for secret values
 - **THEN** no secret value appears in the repository, in the Nix store, or in a
-  new file the change introduced
+  world-readable path — and the one credential the change does place on the host
+  (the route 2.2 chose, design D3) is a root-owned `0600` file outside both
+
+<!-- AMENDED 2026-09-28 during 9.1's citation pass. The scenario read "No new
+     secret value is written anywhere ... in a new file the change introduced",
+     which the chosen route CONTRADICTS BY CONSTRUCTION: D3 puts the SecretSpec
+     credential at rest on the host at /root/.config/op-sa-token, root-owned
+     0600, precisely so no interactive vault session is needed. A scenario that
+     the design cannot satisfy is not evidence of a good design; the requirement
+     was reworded to what the change actually promises — no secret in the tree,
+     the store, or anything world-readable — which is provable (preflight gate 8,
+     task 6.1's mode read-back, task 6.3's sweep of the added paths). -->
 
 ### Requirement: One Machine declaration, with the loopback target chosen per invocation
 
