@@ -78,28 +78,28 @@ eval/check gates in group 2 pass, and every host-touching task runs through
 
 ## 3. Host checks and first application (all pane-wrapped)
 
-- [ ] 3.1 **Read-only pre-deploy probe** (check gate for the deploy):
+- [x] 3.1 **Read-only pre-deploy probe** (check gate for the deploy):
       `scripts/bb-pane-run.sh --title "operator-env preflight" -- ssh -i ~/.ssh/id_ed25519-op-dev -o IdentitiesOnly=yes -o BatchMode=yes hbohlen@152.53.92.126 'command -v runuser || echo NO-RUNUSER; grep -E "substituters|trusted" /etc/nix/nix.conf; ls -ld /home/hbohlen/projects 2>/dev/null || echo NO-PROJECTS-DIR'`
       → report the pane session id; record: runuser presence (design R6),
       current substituters baseline (expected: cache.nixos.org only), whether
       `~/projects` pre-exists (design R7).
-- [ ] 3.2 Sync the host's checkout per `docs/self-deploy-netcup.md` (workstation
+- [x] 3.2 Sync the host's checkout per `docs/self-deploy-netcup.md` (workstation
       push → host pull), then verify host revision == pushed revision.
       Verify (pane): `scripts/self-deploy-drift.sh` reports no drift, with its
       pane session id.
-- [ ] 3.3 **Host credential gate** (pane): at the host checkout,
+- [x] 3.3 **Host credential gate** (pane): at the host checkout,
       `./bin/devenv machines info` exits 0 — the host's D3 credential resolves
       the profile including `GH_TOKEN` (design R3). If this fails, stop: the
       self-deploy loop is broken by the declaration and 1.3 must be revisited
       before any deploy.
-- [ ] 3.4 **Deploy** (pane): run the routine host-side loop,
+- [x] 3.4 **Deploy** (pane): run the routine host-side loop,
       `scripts/bb-pane-run.sh --title "operator-env deploy" -- ./scripts/self-deploy-host.sh`
       (or the documented `./bin/devenv machines deploy netcup -O
       machines.netcup.target.host:string root@localhost` form) → system role
       activates first, home-manager activates as `hbohlen`; report the pane
       session id. Fallback route if the loop is mid-change: the workstation's
       public root path.
-- [ ] 3.5 **Post-deploy verification** (pane, one script run):
+- [x] 3.5 **Post-deploy verification** (pane, one script run):
       `scripts/bb-pane-run.sh --title "operator-env verify" -- ./scripts/operator-env-verify.sh`
       — a new script asserting, per spec scenarios:
       `devenv --version` == `./bin/devenv --version` (2.4.0) as `hbohlen`;
@@ -114,7 +114,7 @@ eval/check gates in group 2 pass, and every host-touching task runs through
       authenticated;
       `./bin/devenv machines status netcup` → `outcome: succeeded`.
       Verify: script exits 0; pane session id reported alongside the verdict.
-- [ ] 3.6 Re-check the loop still works after the new secret is on its path
+- [x] 3.6 Re-check the loop still works after the new secret is on its path
       (pane): `scripts/self-deploy-preflight.sh` → all gates green, session id
       reported.
 

@@ -95,3 +95,23 @@ inputs:
     inputs:
       nixpkgs:
         follows: nixpkgs
+
+  # llm-agents — the agent tooling the operator account carries
+  # (`hermes-agent` + `herdr`, hosts/netcup/agents.nix). NOT in nixpkgs, and
+  # absent from both caches this host declared until now.
+  #
+  # IT DELIBERATELY DOES NOT FOLLOW nixpkgs (design D2). llm-agents.nix is only
+  # built and tested against its own pinned `nixpkgs-unstable`, and its README
+  # measures that `follows: nixpkgs` costs the binary-cache hits: this Machine's
+  # nixpkgs is devenv-nixpkgs/rolling (a different revision), so the prebuilt
+  # packages would stop substituting and compile instead (npm + two Rust/PyO3
+  # extensions + zig/libghostty — hours, on whichever machine runs the build).
+  # Omitting `follows` brings a SECOND nixpkgs into the closure graph on purpose;
+  # design R1 measures the cost, and the numtide cache declared in
+  # hosts/netcup/self-deploy.nix is what keeps it a download.
+  #
+  # Pinned in devenv.lock at the rev the planning measured
+  # (e28ea84e…, 2026-09-28). Update by name only — `devenv inputs update
+  # llm-agents` — never bare `devenv update` (see the `devenv:` block above).
+  llm-agents:
+    url: github:numtide/llm-agents.nix

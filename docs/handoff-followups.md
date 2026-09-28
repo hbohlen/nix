@@ -575,3 +575,39 @@ loop moved to loopback.
 | 8 | Second host `oci` (Q5) | scope | open; gates generalizing the module shape |
 | 9 | Snapshots, zram, sops-nix, operator tooling | greenfield | operator tooling **STARTED 2026-09-28 — change `add-netcup-operator-env`:** a `home-manager` role on `machines.netcup` puts a pinned `devenv` (2.4.0, from the locked `devenv:` input) and `gh` on `hbohlen`'s PATH, declares `~/projects`, and declares `devenv.cachix.org` in the host's `nix.settings`. This **closes self-deploy design Q7** (should the operator account get a home-manager role): yes. Snapshots, zram and sops-nix still not discussed |
 | 10 | Agent runner on netcup: `devenv processes` vs always-on services | decision | open — scoped in explore-mode 2026-09-28: `devenv processes` is SESSION-scoped (tied to a login, dies with it), so boot-surviving agent jobs need NixOS `services.*` or lingered user units (`users.users.<name>.linger` confirmed present in the NixOS manual; eval against the locked nixpkgs still owed). Closely coupled: making non-root builds substitute on the host needs `devenv.cachix.org` declared in `nix.settings.substituters`/`trusted-public-keys` — measured 2026-09-28 (workstation, nix 2.34.x) that the daemon SILENTLY DROPS an untrusted user's `--option extra-substituters` (`nix-store -r` probe as an untrusted user: bogus cache never contacted; as root: contacted), while `trusted-users` on the host is `root` only |
+
+---
+
+## 11. 2026-09-28 (third session) — agent tooling on the operator account
+
+Change `add-netcup-agent-tooling` puts `hermes` and `herdr` on `hbohlen`'s
+`PATH` on the host, sourced from a newly pinned `numtide/llm-agents.nix` flake
+input (rev `e28ea84e…`) that deliberately does **not** follow `nixpkgs`. It is a
+`PATH`-only change: no service, no timer, no boot-surviving unit, no credential.
+
+- **A SECOND DECLARED CACHE.** `hosts/netcup/self-deploy.nix` now appends
+  `https://cache.numtide.com` (key `niks3.numtide.com-1:…`) to
+  `nix.settings.substituters` / `nix.settings.trusted-public-keys`, beside
+  `devenv.cachix.org`. The two agent packages are published only there; without
+  the declaration the host would compile npm front-ends, two Rust/PyO3
+  extensions and zig/libghostty during its own self-deploy. The declaration is
+  additive (`lib.mkAfter`), so `cache.nixos.org` and `devenv.cachix.org` and
+  their keys survive. This is the second substituter the host declares.
+- **A DELIBERATE SECOND NIXPKGS.** Not following `nixpkgs` is what keeps the
+  binary-cache hits; the cost is a second nixpkgs evaluation in the closure
+  graph (design R1). Measured warm-cache eval delta is sub-second, so R2's
+  single-digit-seconds bound holds.
+- **OPEN FOLLOW-UP — `HERMES_API_SERVER_KEY` HAS NO CONSUMER YET.** The vault
+  (`dev`) holds the item, but `secretspec.toml` does **not** declare it: neither
+  its field nor its consumer is defined here. `hermes` is therefore installed
+  but not yet useful — no model provider, and `~/.hermes/skills` is not yet
+  linked to this repository's `.agents/skills`. Declaring the secret and wiring
+  the skills root is a separate change once a session is attempted (design R7,
+  Open Question 2). This mirrors the `GH_TOKEN` question (§8 Q7/Q8), answered
+  the same way: declare the consumer before the secret.
+- **OPERATOR PRECONDITION BEFORE THE FIRST HOST-SIDE BUILD (design D4).** The
+  workstation's `nix.conf` must carry the same `cache.numtide.com` + key, or the
+  first build of `hermes-agent` / `herdr` compiles them from source (measured
+  2026-09-28: the ambient workstation config builds 17 derivations; supplying
+  the cache per-invocation builds 0). The host is unaffected once the declaration
+  above lands.

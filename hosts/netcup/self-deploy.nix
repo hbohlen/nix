@@ -66,9 +66,24 @@
   # a permanent privilege grant for what is a cache problem, and the operator's
   # non-root builds only need to READ from the cache. The key is the same one
   # bin/devenv documents.
-  nix.settings.substituters = lib.mkAfter [ "https://devenv.cachix.org" ];
+  #
+  # THE SECOND CACHE, FOR THE AGENT TOOLING (design D3; `add-netcup-agent-tooling`).
+  # `hermes-agent` and `herdr` are published ONLY to the Numtide cache — measured
+  # 2026-09-28 against both `cache.nixos.org` and `devenv.cachix.org`, by name:
+  # absent. Without this declaration the host would compile npm frontends, two
+  # Rust/PyO3 extensions and zig/libghostty from source during its own
+  # self-deploy. The llm-agents flake's own `nixConfig` would declare it, but a
+  # flake's `nixConfig` is NOT honoured when it is consumed as an input (its
+  # README says so), so the host declares it here. `lib.mkAfter` appends both
+  # the substituter and its key, so `cache.nixos.org` and `devenv.cachix.org`
+  # and their keys survive — the host keeps substituting its own closure.
+  nix.settings.substituters = lib.mkAfter [
+    "https://devenv.cachix.org"
+    "https://cache.numtide.com"
+  ];
   nix.settings.trusted-public-keys = lib.mkAfter [
     "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw="
+    "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
   ];
 
   # git and the 1Password CLI, and nothing else.

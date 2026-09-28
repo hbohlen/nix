@@ -78,6 +78,11 @@ let
     or (throw "The devenv input does not provide a devenv package for ${system}");
 in
 {
+  # The agent tooling (`hermes`, `herdr`) lives beside its justification in its
+  # own module (design D6) and joins this role through the home-manager module
+  # system — the same `inputs` specialArg is in scope there as here.
+  imports = [ ./agents.nix ];
+
   # The account this role configures. These MUST agree with
   # users.users.hbohlen in ./default.nix and with the deploy driver's drop
   # target: the driver compares against `home.username` and hard-errors if the
