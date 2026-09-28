@@ -298,7 +298,9 @@ which decision was taken and why it is closed.
 4. Which secrets does this build actually need, and do they go in 1Password?
 5. Is a second host (`oci`) in scope this year, or does the module shape stay
    single-host until it is?
-6. **What is `hbohlen`'s password FOR?** *(Asked 2026-09-28; not answered.)*
+6. **What is `hbohlen`'s password FOR?** *(Asked and answered 2026-09-28:
+   console fallback — set by hand, both accounts `P`; the measured correction
+   to option (B) is in the note below.)*
    The ask was "a non-root user with passwordless sudo" — which **already
    exists** (`users.users.hbohlen`, `wheel`, `wheelNeedsPassword = false`), so
    the only delta is a usable password (`hashedPassword = "!"` locks it). But
@@ -316,6 +318,27 @@ which decision was taken and why it is closed.
    the store, provisioned once, survives rebuilds, must be re-provisioned on
    re-image. The answer depends on this question's real purpose: console
    fallback? key-loss insurance (it isn't — SSH password auth is off)?
+   **Answered 2026-09-28 (§10): the purpose IS console fallback** — both
+   accounts were measured `L` (locked), so the VNC console had no usable login.
+   **Settled the same day, by hand:** the operator SSHed in and ran
+   `passwd root` and `passwd hbohlen`.
+   **And option (B)'s trap above is WRONG for this host — measured, not
+   reasoned:** on the live host `mutableUsers = true`, and the host's own
+   `update-users-groups.pl` (`/nix/store/dyx8qsmgn…-update-users-groups.pl`,
+   identical to the local build's) rewrites an existing account's shadow hash
+   only under `if !$spec->{mutableUsers}` — lines 299 `$sp_pwdp = "!" if
+   !$spec->{mutableUsers};` and line 300 `$sp_pwdp = $u->{hashedPassword} if
+   defined … && !$spec->{mutableUsers};`. The declared
+   `hashedPassword = "!"` is therefore applied when the account is **created**,
+   not on every deploy, so a hand-set password **survives deploys**. Proof of
+   state: `passwd -S` → `root P 2026-09-28` and `hbohlen P 2026-09-28` (both
+   were `L` earlier the same day). No config change was needed, so R-A's
+   moving part never existed. Two caveats that still hold: the passwords are
+   **console-only** (`PasswordAuthentication = false`,
+   `KbdInteractiveAuthentication = false`, `PermitRootLogin =
+   "prohibit-password"` — they gain nothing over SSH), and they live outside
+   the configuration, so a **re-image wipes them** and they must be set again
+   at bring-up. They are recorded nowhere; the operator must remember them.
 7. **Does the host need `gh` at all?** *(Asked 2026-09-28; not answered.)*
    Measured: the repo is **public** (`api.github.com` says
    `visibility: public`), so the host's clone and `git pull --ff-only` are
@@ -341,6 +364,7 @@ which decision was taken and why it is closed.
    plaintext into a pane** — it survives in bb's terminal scrollback (atuin's
    history was checked: 0 hits; my scratch copy was shredded). Rotate it if
    that residue matters; harmless if not.
+   **Closed 2026-09-28: not rotating** — residue accepted; §10 ledger #6.
 
 ## 9. 2026-09-28 — vault write access, `GH_TOKEN`, and the pull premise
 
@@ -412,6 +436,131 @@ Do not implement any of the three until Q6's purpose question is answered.
   the pane-inherits-nothing rule, the working `op item create` forms, and how
   to read pane output back — are folded into **§6**, so they are not
   rediscovered.
-rule, the working `op item create` forms, and how
-  to read pane output back — are folded into **§6**, so they are not
-  rediscovered.
+
+---
+
+## 10. 2026-09-28 (second session) — the console, the lock state, the posture hazard
+
+Session type: explore-mode again, ending in `/opsx-propose` +
+`/opsx-apply`. **The repo files this session changed are this document and
+`openspec/specs/netcup-install/spec.md`** (via change
+`2026-09-28-reconcile-netcup-install-spec`, archived the same day): no config,
+no `secretspec.toml`, no `hosts/netcup/*` edit.
+
+### What the console is, and what it cannot do (measured)
+
+- Operator confirmed the netcup SCP console exists. Two independent routes
+  live in it: the **VNC console** (SCP → "Screen") and the panel's **rescue
+  boot**.
+- Read-only probe from the workstation, run in a visible pane as
+  `netcup-operations` requires — herdr pane `w1A:p5`, terminal
+  `term_65c85e8c434f3a`:
+
+      ssh -i ~/.ssh/id_ed25519-op-dev -o IdentitiesOnly=yes -o BatchMode=yes \
+          root@152.53.92.126 "passwd -S root; passwd -S hbohlen"
+
+  → `root L 1970-01-02 -1 -1 -1 -1`, `hbohlen L 1970-01-02 -1 -1 -1 -1`.
+  **Both accounts are locked and have never had a password** (`L`, epoch
+  date), and `boot.loader.systemd-boot.editor = false` closes the boot-menu
+  `init=/bin/sh` route.
+- **Therefore the VNC console reaches a login prompt nothing on this host can
+  satisfy.** Its only usable route today is rescue boot — never rehearsed
+  against this btrfs layout.
+- **The `dev` vault holds no netcup SCP credential** (six items, §5), so panel
+  and rescue access are **human-only**: no agent can run the recovery path.
+  Whatever is written for it must be written for the operator.
+
+### Q6's purpose — settled by hand, cheaper than either option
+
+The purpose question was answered: the password gates **console login**, which
+is exactly the credential a tailnet-only posture lacks.
+
+- **R-A — DONE 2026-09-28, in a form cheaper than designed.** The operator
+  SSHed in and ran `passwd root` and `passwd hbohlen`. No
+  `hashedPasswordFile`, no secretspec entry, no vault item, no provisioning
+  step — the moving part this option was priced at never existed, because the
+  premise behind option (B)'s trap is false here (measured in §8 Q6:
+  `mutableUsers = true`, and activation rewrites an existing account's hash
+  only `if !$spec->{mutableUsers}`). `passwd -S` → `root P`, `hbohlen P`.
+  Console login → passwordless sudo → recovery in about a minute.
+  - What this R-A does NOT cover: a **re-image** wipes both passwords (they
+    live outside the configuration), and forgetting them drops you to R-B.
+    Only the declarative version (`hashedPasswordFile` + `install.secrets`)
+    survives a re-image — optional, and worth pricing only if re-imaging
+    becomes routine.
+- **R-B — rescue boot. Still the floor, still never rehearsed. DEFERRED
+  2026-09-28 by the operator ("don't worry about rescue boot for now") — do
+  not schedule a rehearsal.** It is what remains when every credential is
+  gone: panel → rescue Linux → mount the `@`, `@home`, `@nix`, `@var` subvols
+  by hand → fix → reboot. No config change; the only cost would have been
+  rehearsing it once so the procedure is not discovered under pressure.
+- **Not exclusive** — R-B exists whether or not R-A does; it is the provider's
+  own feature.
+
+**Consequence for the posture change (ledger #3):** the precondition blocking
+it is satisfied — a console recovery path exists and is measured working
+(`P`, not `L`). What that does NOT remove is §4.1's hazard: closing public SSH
+still makes an unverified `install.secrets` delivery a single point of
+failure, with R-B — never rehearsed — as the fallback.
+
+### Follow-ups 1 + 2 fused: the posture change has a named hazard
+
+Making the overlay the only access path (§3 menu item (a), §4 item 2) has a
+hazard that had not been written down:
+
+    close public :22 ──▶ first boot after a re-image must reach the tailnet
+                              │
+                     install.secrets delivers TS_AUTH_KEY
+                     (§4.1 — STILL UNVERIFIED, needs a re-image)
+                              │
+              fails ──────────┴──▶ host reachable over NO network path
+                                   recovery = rescue boot only
+                                   (human-only, never rehearsed)
+
+Two sequencings: **(i)** prove the install-time delivery first in its own
+re-image change, then close public SSH; **(ii)** fuse close + re-image into one
+change with the console/rescue as the declared safety net. Either way R-A/R-B
+is a precondition decision for it.
+
+Blast radius when that change happens (live files, measured): `devenv.nix`'s
+`target.host` plus ~9 files under `scripts/` and `openspec/config.yaml`
+harden-code `152.53.92.126`. Spec-wise `netcup-machine`'s "Remote access is
+key-only SSH on the target's public address" is a **MODIFIED** requirement (not
+an addition); `netcup-tailnet`'s "without weakening the public path" and
+`netcup-install`'s public-address evidence scenarios are affected; loopback
+root must survive (self-deploy R7).
+
+### Found: a spec contradiction `add-netcup-tailnet` left behind
+
+`netcup-install` **required, until 2026-09-28,** **"The install path requires
+no vault session and no tailnet"**, with a scenario whose precondition is "no
+`secretspec.toml` in the repository" — the same precondition
+`add-netcup-tailnet` retired in `netcup-machine`. Its proposal listed
+`netcup-machine` as the only modified capability; the duplicate in
+`netcup-install` was missed. Install now REQUIRES the vault twice over: every
+`machines` invocation resolves the profile (§1), and `install.secrets` resolves
+`TS_AUTH_KEY`. **Fixed by `2026-09-28-reconcile-netcup-install-spec`, archived
+the same day:** REMOVE + ADDED (the requirement's *title* was itself the false
+claim, and a MODIFIED delta must reproduce headers verbatim), the true half —
+no overlay membership during the run — carried forward, and this capability's
+missing `Purpose` written. Archive report `+1, ~0, -1`;
+`openspec validate --all --strict` → 6/6 specs valid.
+
+Correction to a claim made earlier in this session: `netcup-machine`'s
+"install **and deploy** require root SSH" rationale is **not** stale — the
+workstation → host deploy path still uses public root SSH; only the self-deploy
+loop moved to loopback.
+
+### Follow-up ledger after this session
+
+| # | Item | Type | State |
+|---|---|---|---|
+| 1 | Spec truth-up: `netcup-install` vs reality | change | **DONE 2026-09-28 — archived `openspec/changes/archive/2026-09-28-reconcile-netcup-install-spec/`** |
+| 2 | R-A vs R-B console recovery design (= Q6) | decision | **LARGELY SETTLED 2026-09-28 — R-A done by hand (`passwd root` + `passwd hbohlen`, both now `P`), zero config change; option (B)'s re-lock trap measured false here.** Residue: (a) ~~rehearse R-B once~~ **DEFERRED by the operator — not doing it now**, (b) decide whether the passwords should survive a re-image (only declarative delivery does). |
+| 3 | Tailnet-only access (= Q2, §3 (a), §4 item 2) | change | scoped; **unblocked** — the recovery precondition (#2) is satisfied, so a working console fallback now exists |
+| 4 | Install-time `TS_AUTH_KEY` delivery proof (= §4.1) | evidence | **DEFERRED 2026-09-28 by the operator** — "keep iterating on what we have": no re-image is scheduled just to prove delivery. The §4.1 hazard still stands as written: if public SSH is ever closed before delivery has proven itself on a real re-image, the recovery path (#2) is the *only* safety net. |
+| 5 | `GH_TOKEN` in `secretspec.toml` (Q7/Q8) | decision | lean **no change** (premise measured false, §9) |
+| 6 | Write-token rotation (Q9) | vault action | **CLOSED 2026-09-28 — not doing it.** Scrollback residue accepted; no vault action, no repo change. |
+| 7 | `Purpose: TBD` in the five untouched specs | hygiene | open, small |
+| 8 | Second host `oci` (Q5) | scope | open; gates generalizing the module shape |
+| 9 | Snapshots, zram, sops-nix, operator tooling | greenfield | not discussed |
