@@ -114,11 +114,19 @@ attributed rather than guessed at.
 
 ## 5. The checkout and the pinned toolchain on the host
 
-- [ ] 5.1 Create the remote and publish: a branch or jj bookmark at the current
+- [x] 5.1 Create the remote and publish: a branch or jj bookmark at the current
       revision, pushed per 2.3's answer. The repository is jj-colocated in
       detached HEAD with no bookmarks today, so there is nothing to push yet.
       — Verify: `git remote -v` shows the remote; the branch or bookmark resolves
       to the same commit as the working copy's tip.
+      **Done 2026-09-27: public GitHub repository `hbohlen/nix`, with the jj
+      bookmark `main` pushed and set as the default branch. Verified from a
+      fresh clone of the remote: `main` resolves to the same commit as the
+      working copy's tip, 48 tracked files, no file tracked against `.gitignore`,
+      and no credential in the tree or anywhere in the history. One file had been
+      tracked against `.gitignore:15` and is now untracked —
+      `.machines/netcup/facter.json`, the generated hardware report; it remains in
+      the ancestry at 868f8c9 (design OQ1).**
 - [ ] 5.2 Clone to `/home/hbohlen/nix` on the host. `git` only — jj is not needed
       to build or deploy.
       — Verify: the host's `git rev-parse HEAD` equals the pushed revision.

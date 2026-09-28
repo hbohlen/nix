@@ -385,7 +385,13 @@ from a workstation-side one.
    items (never a value). Audited before the first push: no private key, no
    token, and no secret value appears in the working tree or in any of the 37
    commits. Going private later means making the clone credential-bearing, which
-   is its own change.
+   is its own change. The same audit found one file tracked AGAINST
+   `.gitignore:15`: `.machines/netcup/facter.json`, the 88 KB hardware report
+   `devenv machines install` writes, which the rule excludes because "tracking it
+   would make a later switch to the default facter path silently import a stale
+   report". It carries no credential, but it is a build byproduct this tree says
+   not to track, so it is untracked at the tip; it remains in the ancestry at
+   868f8c9, and purging it would need a rewrite of that commit.
 2. **RESOLVED 2026-09-27 by task 2.1 — the credential at rest (D3's chosen route);
    the wholesale provider override is rejected.** Measured in a `/tmp` scratch
    copy; the override fails exactly where this question predicted, consulting the
