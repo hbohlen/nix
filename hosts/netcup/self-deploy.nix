@@ -134,6 +134,34 @@
     pkgs._1password-cli
   ];
 
+  # THE CHECKOUT IS OPERATOR-OWNED, AND ROOT'S `git` HAS TO BE TOLD THAT IS
+  # EXPECTED. Measured on the live host 2026-09-28, right after /home/hbohlen/nix
+  # changed owner so the operator could run this loop without sudo:
+  #
+  #   ssh root@152.53.92.126 'git -C /home/hbohlen/nix rev-parse HEAD'
+  #     fatal: detected dubious ownership in repository at '/home/hbohlen/nix'
+  #
+  # The drift check runs exactly that command: it reaches the host as root (the
+  # loopback key is root's), then reads the checkout's revision and status. So
+  # without this declaration the check fails on a HEALTHY host, and the loop
+  # stops before it has read anything — which is the shape of failure that sends
+  # an operator chasing the wrong machine.
+  #
+  # DECLARED HERE, NOT RUN BY HAND: `git config --global --add safe.directory`
+  # in /root's home is the fix git's own error message prints, and it would work
+  # until the next re-image — which is exactly the "setting that lives outside
+  # the declaration" this module exists to avoid (see the nix.settings comment
+  # above). /etc/gitconfig is the documented location for it, and it applies to
+  # every caller on this host, workstation-driven or local.
+  #
+  # IT GRANTS NO ACCESS. `safe.directory` only stops git from refusing a
+  # repository whose owner is not the caller; git still cannot read or write
+  # anything the caller's own permissions do not allow.
+  programs.git = {
+    enable = true;
+    config.safe.directory = [ "/home/hbohlen/nix" ];
+  };
+
   # THE HOST'S OWN RECORD OF THE LOOP.
   #
   # `/etc/netcup-self-deploy/loop.json` answers the question an operator asks a
