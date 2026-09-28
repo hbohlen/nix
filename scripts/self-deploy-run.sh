@@ -54,7 +54,14 @@ step "this is running on the host the deploy targets"
 # The loopback target is only the right target FROM the host. Deploying this
 # script's command from the workstation would redirect a deploy back to the
 # workstation's own localhost, which is not a NixOS machine at all.
-hostname=$(hostname) || fail "hostname"
+# The name comes from /proc, NOT from `hostname`: a NixOS host's `hostname`
+# binary lives in /run/current-system/sw/bin, which is on the PATH of an
+# interactive login but NOT on the PATH a non-interactive ssh command session
+# gets when the caller's environment is forwarded. Measured 2026-09-28: a run
+# over ssh from a bb pane died here with `hostname: command not found`, which
+# reads exactly like a broken host and is not one. `read` is a bash builtin, so
+# it cannot be missing.
+read -r hostname </proc/sys/kernel/hostname || fail "cannot read /proc/sys/kernel/hostname"
 [ "$hostname" = "netcup" ] || fail "this script runs ON the netcup host (hostname is '$hostname'); from a workstation use scripts/self-deploy-host.sh"
 printf '  hostname: %s\n' "$hostname"
 

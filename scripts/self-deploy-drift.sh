@@ -24,6 +24,15 @@
 #       exits 0. Dirty work and unpublished host commits are failures in BOTH
 #       modes, because neither can be fixed by pulling.
 #
+#   scripts/self-deploy-drift.sh [--fast-forwardable] --allow-dirty
+#       THE ROLLBACK TEST ONLY (task 7.5). The probe edit that makes an
+#       activation fail is deliberately uncommitted ON THE HOST, so the dirty
+#       check has to be told to stand aside — loudly, and naming the paths. The
+#       revision check is NOT relaxed: the probe still builds from a published
+#       revision, so the only difference between what runs and what is published
+#       is the probe itself. Use it through
+#       `scripts/self-deploy-host.sh --probe-uncommitted`, never by hand.
+#
 # Neither mode merges, resets or discards anything. The check only reads.
 #
 # KNOWN DETAILS THIS SCRIPT CODES IN (measured 2026-09-27 / 2026-09-28):
@@ -52,10 +61,12 @@ BRANCH=${BRANCH:-main}
 HOST_REPO=${HOST_REPO:-/home/hbohlen/nix}
 
 MODE=strict
+ALLOW_DIRTY=0
 for a in "$@"; do
   case "$a" in
     --fast-forwardable) MODE=lax ;;
-    -h|--help) sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --allow-dirty) ALLOW_DIRTY=1 ;;
+    -h|--help) sed -n '2,53p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) printf 'self-deploy-drift.sh: unexpected argument %s\n' "$a" >&2; exit 2 ;;
   esac
 done
@@ -91,6 +102,16 @@ rc=0
 #    the shape risk R5 warns about — a declaration that exists only on the host.
 if [ -z "$DIRTY" ]; then
   printf '  OK   no uncommitted difference on the host\n'
+elif [ "$ALLOW_DIRTY" -eq 1 ]; then
+  # THE ROLLBACK TEST'S PATH (task 7.5): a deliberate, uncommitted probe edit on
+  # the host, deployed on purpose to watch an activation fail and be rolled back.
+  # It is the ONLY reason to tolerate a dirty checkout, so it is loud, it names
+  # the paths, and it says what to do when the probe is over.
+  printf '  NOTE the host tree is DIRTY, and this run was told to allow it:\n'
+  printf '%s\n' "$DIRTY" | sed 's/^/         /'
+  printf '       This is the rollback test (task 7.5) and nothing else. Discard the\n'
+  printf '       probe when it is done:\n'
+  printf '         ssh root@%s "git -C %s checkout -- ."\n' "$PUBLIC" "$HOST_REPO"
 else
   printf '  FAIL the host tree carries uncommitted differences:\n'
   printf '%s\n' "$DIRTY" | sed 's/^/         /'
@@ -130,15 +151,20 @@ else
 fi
 
 if [ "$rc" -eq 0 ]; then
-  # The closing line has to distinguish the two ways to be clean, because a
-  # reader who sees "NO DRIFT" after a LAX check and reads it as "at the
-  # published revision" will skip the pull that step 2 does — measured
-  # 2026-09-28, when the lax run of the 7.4 loop printed exactly that.
-  if [ "$HEAD_REV" = "$PUSHED" ]; then
-    printf '\nNO DRIFT: the host holds the published revision, with nothing uncommitted.\n'
-  else
+  # The closing line has to distinguish the ways to be clean, because a reader
+  # who sees "NO DRIFT" after a LAX check and reads it as "at the published
+  # revision" will skip the pull that step 2 does — measured 2026-09-28, when the
+  # lax run of the 7.4 loop printed exactly that. A dirty tree that was allowed
+  # is never "nothing uncommitted", so it says so here too.
+  if [ "$HEAD_REV" != "$PUSHED" ]; then
     printf '\nNO DRIFT, BUT BEHIND: the host is clean and can fast-forward to %s.\n' "$PUSHED"
     printf '  This is the expected state right after a push; the loop pulls next.\n'
+  elif [ -n "$DIRTY" ]; then
+    printf '\nNO DRIFT IN REVISION, BUT THE HOST TREE IS DIRTY BY REQUEST.\n'
+    printf '  The revision is the published one (%s); the uncommitted paths above\n' "$PUSHED"
+    printf '  are this run\047s deliberate probe. Discard them when it is over.\n'
+  else
+    printf '\nNO DRIFT: the host holds the published revision, with nothing uncommitted.\n'
   fi
 else
   printf '\nDRIFT: settle this before deploying from the host.\n'

@@ -5,6 +5,11 @@
 # reading it back afterwards:
 #   ./scripts/bb-pane-run.sh --title "self-deploy from the host" -- ./scripts/self-deploy-host.sh
 #
+# `--probe-uncommitted` IS THE ROLLBACK TEST'S DOOR (task 7.5) and nothing else's:
+# it lets a deliberately uncommitted edit on the host through the dirty gate, so
+# an activation can be made to fail on purpose and the rollback observed. The
+# revision check is not relaxed by it. See docs/self-deploy-netcup.md.
+#
 # WHAT IT DOES, IN ORDER, AND WHY IN THAT ORDER:
 #   1. scripts/self-deploy-drift.sh --fast-forwardable — the host must be CLEAN,
 #      and the published revision must descend from what it holds. It is normally
@@ -50,14 +55,29 @@ fail() { printf '\nSELF-DEPLOY ABORTED: %s\n' "$*" >&2; exit 1; }
 
 [ -r "$KEY" ] || fail "$KEY missing — materialize it (docs/install-netcup.md step 1)"
 
+# --probe-uncommitted IS THE ROLLBACK TEST'S DOOR (task 7.5). The probe that
+# makes an activation fail is deliberately uncommitted ON THE HOST, so the dirty
+# gate has to stand aside for exactly that run. The revision check is NOT
+# relaxed: the run still builds from the published revision, so the probe is the
+# only difference between what runs and what is published.
+DRIFT_ARGS=()
+if [ "${1:-}" = "--probe-uncommitted" ]; then
+  DRIFT_ARGS+=(--allow-dirty)
+  printf '\n*** PROBE RUN: an uncommitted edit on the host is EXPECTED and is about to be\n'
+  printf '*** deployed to watch it fail. This is the rollback test. Discard the probe\n'
+  printf '*** afterwards with:  ssh root@%s "git -C %s checkout -- ."\n' "$PUBLIC" "$HOST_REPO"
+elif [ -n "${1:-}" ]; then
+  fail "unknown argument $1 (only --probe-uncommitted is accepted)"
+fi
+
 step "1. the drift check (the host must be clean, and able to reach the published revision)"
-"$REPO/scripts/self-deploy-drift.sh" --fast-forwardable \
+"$REPO/scripts/self-deploy-drift.sh" --fast-forwardable "${DRIFT_ARGS[@]+"${DRIFT_ARGS[@]}"}" \
   || fail "the host carries uncommitted work, or commits nobody else has — settle that before deploying from it (see the check's output above)"
 
 step "2. the host updates its checkout, fast-forward only"
 rsh "git -C $HOST_REPO pull --ff-only" || fail "git pull --ff-only on the host"
 rsh "git -C $HOST_REPO log --oneline -1; git -C $HOST_REPO status --porcelain | head"
-"$REPO/scripts/self-deploy-drift.sh" \
+"$REPO/scripts/self-deploy-drift.sh" "${DRIFT_ARGS[@]+"${DRIFT_ARGS[@]}"}" \
   || fail "the host is still not at the published revision after pulling — the strict check above says why"
 
 step "3. the deploy, run ON the host against root@localhost"

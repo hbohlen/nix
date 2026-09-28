@@ -98,10 +98,24 @@ check "loopback login is uid 0" "0" "$(printf '%s' "$out" | head -1)"
 check "loopback login reports the host's name" "netcup" "$(printf '%s' "$out" | tail -1)"
 
 step "a store over the loopback answers as a remote (risk R9: NIX_SSHOPTS names the identity)"
-out=$(rsh "NIX_SSHOPTS='-i $LOOPBACK_KEY -o IdentitiesOnly=yes' nix store info --store ssh://root@localhost 2>&1 | head -8")
+# WHAT THIS CAN AND CANNOT PROVE, MEASURED ON THE HOST 2026-09-28 (Nix 2.34.8):
+# `nix store info --store ssh://root@localhost` prints ONLY `Store URL: …` and
+# exits 0. There is no `Version:` and no `Writable:` line in this Nix, and
+# `nix store ping` is the same command under a deprecation warning — so a gate
+# that expects those lines fails on a host that is working, which is what this
+# gate did until it was corrected. The proof is therefore: the remote store
+# ANSWERS (exit 0), and it answers a QUESTION about a path. A refused identity
+# fails both, which is R9's failure.
+out=$(rsh "export NIX_SSHOPTS='-i $LOOPBACK_KEY -o IdentitiesOnly=yes'; nix store info --store ssh://root@localhost 2>&1; echo RC=\$?")
 printf '%s\n' "$out" | sed 's/^/  /'
-check "the loopback store answers with a version" "Version:" "$out"
-check "the loopback store is writable" "Writable: yes" "$out"
+check "the loopback store answers" "Store URL: ssh://root@localhost" "$(printf '%s' "$out" | sed -n 1p)"
+check "the loopback store answered, rather than refused" "RC=0" "$(printf '%s' "$out" | tail -1)"
+
+syspath=$(rsh 'readlink -f /run/current-system')
+out=$(rsh "export NIX_SSHOPTS='-i $LOOPBACK_KEY -o IdentitiesOnly=yes'; nix path-info --store ssh://root@localhost $syspath 2>&1; echo RC=\$?")
+printf '%s\n' "$out" | sed 's/^/  /'
+check "the loopback store knows the running system" "$syspath" "$(printf '%s' "$out" | sed -n 1p)"
+check "the query over the loopback exits 0" "RC=0" "$(printf '%s' "$out" | tail -1)"
 
 step "the credential is at rest, root-owned 0600, and matches the workstation's file (value never read)"
 out=$(rsh "stat -c '%a %U:%G %s' $CRED 2>&1; sha256sum $CRED 2>/dev/null | cut -c1-16")
