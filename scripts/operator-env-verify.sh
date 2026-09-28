@@ -136,12 +136,11 @@ printf '%s\n' "$out" | sed 's/^/  /'
 check "the non-root build of hello completes" "RC=0" "$(printf '%s' "$out" | tail -1)"
 
 step "GH_TOKEN resolves for gh as the loop's credential, per use, value never read (spec: auth at the moment of use)"
-# `secretspec run` inherits this remote shell's PATH, and a non-interactive ssh
-# shell has no home-manager profile — so `gh` must be reachable from the PATH we
-# set here, or secretspec fails with IO error 2 (measured: that is exactly how
-# this check failed on the first post-deploy run, 2026-09-28). The path resolves
-# to $HOME/.nix-profile/bin, but the remote shell interpolates `$HOME` itself.
-out=$(rsh "cd $HOST_REPO && export PATH=\"\$HOME/.nix-profile/bin:\$PATH\" SECRETSPEC_REASON='operator-env verify: prove GH_TOKEN resolves for gh' OP_SERVICE_ACCOUNT_TOKEN=\$(cat $CRED) && \$(readlink -f .devenv-toolchain)/bin/secretspec run --reason 'operator-env verify: gh auth status' -- gh auth status 2>&1; echo RC=\$?")
+# `secretspec run` inherits this remote shell's PATH, and this command runs as
+# `root`, whose HOME is /root — so `$HOME/.nix-profile/bin` would be the WRONG
+# profile and `gh` would be missing (measured: that is exactly how this check
+# failed, twice, on 2026-09-28). The operator's profile is named absolutely.
+out=$(rsh "cd $HOST_REPO && export PATH=\"/home/hbohlen/.nix-profile/bin:\$PATH\" SECRETSPEC_REASON='operator-env verify: prove GH_TOKEN resolves for gh' OP_SERVICE_ACCOUNT_TOKEN=\$(cat $CRED) && \$(readlink -f .devenv-toolchain)/bin/secretspec run --reason 'operator-env verify: gh auth status' -- gh auth status 2>&1; echo RC=\$?")
 printf '%s\n' "$out" | grep -v '^RC=' | sed 's/^/  /'
 check "gh reports the authenticated account" "Logged in to github.com account hbohlen" "$out"
 check "the authenticated invocation exits 0" "RC=0" "$(printf '%s' "$out" | tail -1)"
