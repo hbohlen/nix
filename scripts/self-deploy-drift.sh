@@ -37,8 +37,12 @@
 #
 # KNOWN DETAILS THIS SCRIPT CODES IN (measured 2026-09-27 / 2026-09-28):
 #   * The host's checkout is OPERATOR-owned at /home/hbohlen/nix (changed
-#     2026-09-28, when the loop started running from this machine as hbohlen),
-#     so `git pull` and `git status` there run as that user.
+#     2026-09-28, when the loop started running from this machine as hbohlen).
+#     This check still reads it AS ROOT over ssh, because the loopback key is
+#     root's — which is safe here: `rev-parse`, `log` and `status` create no
+#     objects. The command that DOES write objects, the pull in
+#     scripts/self-deploy-host.sh, runs in the owner's name for exactly that
+#     reason.
 #   * `git status --porcelain` on a healthy host prints NOTHING: .devenv/,
 #     .devenv-toolchain and .machines/ are gitignored, so the toolchain symlink
 #     and the facter report are not mistaken for drift.
@@ -49,10 +53,11 @@
 #     has not fetched the published revision (that is the point of being behind),
 #     so `git log HEAD..origin/main` ON THE HOST prints nothing even when commits
 #     are missing — measured on this check's first real run.
-#   * The host has no push credential: the repository is PUBLIC, so the CLONE
-#     needs none, and a push from the host fails for exactly that reason. Edits
-#     are therefore authored on the workstation and the host only ever pulls; see
-#     docs/self-deploy-netcup.md.
+#   * THE HOST PUSHES TOO, SINCE 2026-09-28: `secretspec run -- git push origin
+#     main` (see docs/self-deploy-netcup.md §1). What this check still refuses is
+#     a commit that is NOT PUBLISHED — local work must be pushed before a deploy,
+#     which is the same rule from either machine. The CLONE needs no credential:
+#     the repository is public.
 set -u
 
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -118,8 +123,9 @@ else
   printf '%s\n' "$DIRTY" | sed 's/^/         /'
   printf '       If it was a deliberate probe, discard it:\n'
   printf '         ssh root@%s "git -C %s checkout -- ."\n' "$PUBLIC" "$HOST_REPO"
-  printf '       If it is real work, it belongs in the repository on the workstation:\n'
-  printf '       the host is not where edits are authored (docs/self-deploy-netcup.md).\n'
+  printf '       If it is real work, commit and push it from here (docs/self-deploy-netcup.md §3):\n'
+  printf '         git add -A && git commit -m "<action> | <subject>"\n'
+  printf '         OP_SERVICE_ACCOUNT_TOKEN=$(cat ~/.config/op-sa-token) secretspec run -- git push origin main\n'
   rc=1
 fi
 
@@ -169,6 +175,7 @@ if [ "$rc" -eq 0 ]; then
   fi
 else
   printf '\nDRIFT: settle this before deploying from the host.\n'
-  printf '  a host that is merely behind:  ssh root@%s "git -C %s pull --ff-only"\n' "$PUBLIC" "$HOST_REPO"
+  printf '  a host that is merely behind:  git -C %s pull --ff-only   (as the operator, on the host)\n' "$HOST_REPO"
+  printf '  uncommitted work on the host:   commit and push it, then run this check again\n'
 fi
 exit "$rc"

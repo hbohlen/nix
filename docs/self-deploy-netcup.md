@@ -15,24 +15,38 @@ The `-O` override redirects **that invocation only**; the declaration in
 deploy run from the workstation. No workstation, no vault session, and no
 long-lived vault credential are in the loop.
 
-## 1. Which remote, and why the host cannot push
+## 1. Which remote, and who pushes
 
 The remote is `origin = https://github.com/hbohlen/nix.git`, branch `main`. The
 repository is **public**, which is what lets the host clone and pull with no
 credential at all.
 
-**THE HOST CANNOT PUSH, AND THAT IS MEASURED, NOT ASSUMED** (2026-09-28): there
-is no `/root/.gitconfig`, no `/root/.git-credentials`, no credential helper in
-the checkout's config, and
+**THE HOST CAN PUSH NOW, AND THAT IS ALSO MEASURED (2026-09-28, host-first
+session).** The older finding this replaces was taken as **root**, with no
+credential helper anywhere:
 
     root@netcup:~# git -C /home/hbohlen/nix push --dry-run origin main
     fatal: could not read Username for 'https://github.com': terminal prompts disabled
 
-So the division of labour is the opposite of what task 8.1 first assumed:
-**edits are AUTHORED ON THE WORKSTATION and pushed from it; the host only ever
-pulls.** Risk R5 is answered not by pushing from the host but by the drift check
-in section 4, which makes any hand edit on the host visible and stops the loop
-before it builds a system nobody can reproduce.
+That is still what a bare `git push` as root does. What changed is that the user
+who actually works on this host now has a credential path:
+
+    OP_SERVICE_ACCOUNT_TOKEN=$(cat ~/.config/op-sa-token) \
+      secretspec run -- git push origin main
+
+`gh auth setup-git` installed the git credential helper, and `secretspec run`
+supplies `GH_TOKEN` from the 1Password `dev` vault **for that invocation only**:
+there is no `~/.config/gh`, and `gh auth status` with no environment reports no
+login at all. Measured: four commits pushed from this host and read back from
+the GitHub API.
+
+So the division of labour is **edits are authored wherever the operator is —
+this host or the workstation — and pushed from there**; the host pulls *and*
+pushes. Risk R5 is still answered by the drift check in section 4, which makes
+any uncommitted edit on the host visible and stops the loop before it builds a
+system nobody can reproduce: commit and push before deploying, and the check
+stays green. What the check no longer refuses is a host-side *commit*, because
+that commit can now be published.
 
 The branch is declared once, in `/etc/netcup-self-deploy/loop.json`
 (`hosts/netcup/self-deploy.nix`), and `scripts/self-deploy-preflight.sh` gate 10
@@ -52,8 +66,8 @@ On the **host** (all of it declared, all of it read back by
 | `experimental-features = nix-command flakes` | `nix.settings` | no `nix-command`, no non-interactive build |
 | `git` | `environment.systemPackages` | no checkout |
 | `_1password-cli` | `environment.systemPackages` | SecretSpec's 1Password provider is a wrapper around `op`, so no `machines` command runs at all |
-| the credential at `/root/.config/op-sa-token` | task 6.1, copied, root `0600` | the profile cannot resolve |
-| the loopback identity at `/home/hbohlen/.ssh/id_ed25519-op-dev`, root `0600` | task 3.3 (design D4) | `root@localhost` refuses the client |
+| the credential at `/root/.config/op-sa-token` (root `0600`) and the operator's copy at `~/.config/op-sa-token` (operator `0600`, added 2026-09-28) | task 6.1; the operator copy with the host-first loop | the profile cannot resolve — whichever user runs the command needs a readable copy |
+| the loopback identity at `/home/hbohlen/.ssh/id_ed25519-op-dev`, operator `0600` (was root `0600` until 2026-09-28) | task 3.3 (design D4); owner moved with the loop | `root@localhost` refuses the client |
 
 Run the workstation-side gates first. They touch nothing on the host:
 
@@ -68,18 +82,37 @@ scripts. It ends by naming the three host-touching steps below.
 
 ## 3. The loop
 
-Every host-touching step runs in a bb pane, so the operator watches it instead
-of reading it back afterwards. `scripts/bb-pane-run.sh` writes the wrapper it
-ran, and the pane stays open at the end.
+The loop runs **on this host, as `hbohlen`, with no pane and no second
+machine** — that is the host-first form (2026-09-28). The workstation form
+below it still works and is kept, because a pane is the right place for a deploy
+you want to watch; but `bb` and `jj` are NOT installed on this host, so any step
+naming them is workstation-only.
 
-**Step 1 — edit, on the workstation.** `hosts/netcup/*.nix`, or the scripts. The
-host is not where edits are authored (section 1).
+**Step 1 — edit.** `hosts/netcup/*.nix`, or the scripts. The checkout is
+`hbohlen`-owned, so edit as that user (`sudoedit hosts/netcup/default.nix`, or
+any editor run as `hbohlen`); root is not involved.
 
-**Step 2 — push, from the workstation.**
+**Step 2 — commit and push, from wherever you edited.**
+
+On this host (`jj` is not installed here — git is):
+
+    git add -A
+    git commit -m "<action> | <subject>"
+    OP_SERVICE_ACCOUNT_TOKEN=$(cat ~/.config/op-sa-token) \
+      secretspec run -- git push origin main
+
+On the workstation:
 
     jj describe -m "<action> | <subject>"; jj bookmark set main -r @; jj git push -b main
 
-**Step 3 — the loop, in a pane.**
+**Step 3 — the loop.**
+
+On this host, directly:
+
+    ./scripts/self-deploy-drift.sh      # strict: must be green before a deploy
+    bash scripts/self-deploy-run.sh     # build, activate, read the status back
+
+On the workstation, in a pane, so the operator watches it:
 
     ./scripts/bb-pane-run.sh --title "self-deploy from the host" -- \
       ./scripts/self-deploy-host.sh
@@ -106,7 +139,13 @@ A healthy run is short and looks like this (2026-09-28, a real change:
       OK   the running system is the one this run requested
     SELF-DEPLOY OK: the host built and activated its own declaration.
 
-**Step 4 — verify, in a pane.**
+**Step 4 — verify.**
+
+On this host (no pane — `bb` is not installed here):
+
+    ./scripts/self-deploy-verify.sh
+
+On the workstation, in a pane:
 
     ./scripts/bb-pane-run.sh --title "host preconditions" -- ./scripts/self-deploy-verify.sh
 

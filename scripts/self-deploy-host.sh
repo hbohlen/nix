@@ -30,12 +30,17 @@
 #
 # KNOWN DETAILS THIS SCRIPT CODES IN (measured 2026-09-27):
 #   * The host's checkout is OPERATOR-owned at /home/hbohlen/nix (changed
-#     2026-09-28, when the loop started running from this machine as hbohlen);
-#     both `git pull` and the deploy run as that user now.
-#   * THE HOST HAS NO PUSH CREDENTIAL. The repository is public so the CLONE
-#     needs no credential, and a push from the host fails for exactly that
-#     reason. Edits are therefore AUTHORED on the workstation and PUSHED from it;
-#     the host only ever pulls. See docs/self-deploy-netcup.md.
+#     2026-09-28, when the loop started running from this machine as hbohlen).
+#     The remote commands here are still REACHED as root — the loopback key is
+#     root's — so the pull is executed in the owner's name: a root `git pull`
+#     creates root-owned files under .git/objects, and hbohlen's next write then
+#     fails with EACCES. One tree, one writer.
+#   * THE HOST PUSHES TOO, SINCE 2026-09-28 (it did not before): the credential
+#     path is `OP_SERVICE_ACCOUNT_TOKEN=… secretspec run -- git push origin main`
+#     — `gh auth setup-git` supplies the helper, the vault supplies GH_TOKEN for
+#     that invocation only, nothing is stored. A bare `git push` still fails for
+#     want of a username; that is what "no push credential" used to mean. See
+#     docs/self-deploy-netcup.md §1.
 #   * The remote command is passed as a QUOTED ARRAY element by
 #     scripts/bb-pane-run.sh, so a shell inside it is evaluated by the remote
 #     shell — which is what lets `bash scripts/self-deploy-run.sh` run with the
@@ -76,8 +81,12 @@ step "1. the drift check (the host must be clean, and able to reach the publishe
   || fail "the host carries uncommitted work, or commits nobody else has — settle that before deploying from it (see the check's output above)"
 
 step "2. the host updates its checkout, fast-forward only"
-rsh "git -C $HOST_REPO pull --ff-only" || fail "git pull --ff-only on the host"
-rsh "git -C $HOST_REPO log --oneline -1; git -C $HOST_REPO status --porcelain | head"
+# IN THE OWNER'S NAME (measured 2026-09-28): `sudo -n -Hu hbohlen` from root.
+# Reachable only as root — the loopback key is root's — but a root `git pull`
+# writes root-owned objects into an operator-owned tree, and hbohlen's next
+# commit would then fail with EACCES.
+rsh "sudo -n -Hu hbohlen git -C $HOST_REPO pull --ff-only" || fail "git pull --ff-only on the host"
+rsh "sudo -n -Hu hbohlen git -C $HOST_REPO log --oneline -1; sudo -n -Hu hbohlen git -C $HOST_REPO status --porcelain | head"
 "$REPO/scripts/self-deploy-drift.sh" "${DRIFT_ARGS[@]+"${DRIFT_ARGS[@]}"}" \
   || fail "the host is still not at the published revision after pulling — the strict check above says why"
 
