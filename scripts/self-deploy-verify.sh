@@ -39,6 +39,10 @@ HOST_REPO=${HOST_REPO:-/home/hbohlen/nix}
 LOOPBACK_KEY=${LOOPBACK_KEY:-/home/hbohlen/.ssh/id_ed25519-op-dev}
 LOOPBACK_FP=${LOOPBACK_FP:-SHA256:WgXJgoyQQ9pTLPVcWL31pnzNFPo/qR0zSPXmj6PEK8I}
 OPERATOR_FP=${OPERATOR_FP:-SHA256:HvoLYt+w9VdcQPwLsF72g9/BZRlwjIaNkHkhJuNHqIQ}
+# The identity's owner is a variable like every other host fact here, not a
+# literal: it is hbohlen:users since the loop started running from this host,
+# and it was root:root before that.
+KEY_OWNER=${KEY_OWNER:-hbohlen:users}
 CRED=${CRED:-/root/.config/op-sa-token}
 
 SSHOPTS=(-F /dev/null -o BatchMode=yes -o ConnectTimeout=10 -o IdentitiesOnly=yes \
@@ -71,14 +75,27 @@ check "hostname" "netcup" "$out"
 # nothing about the operator path. What the host can still prove is the
 # deployed configuration: the operator public half is the key authorized for
 # that account, read back from the running system.
+# THE BRANCH IS ON THE KEY'S FINGERPRINT, AND IT IS EXPLICIT. Operator key →
+# live login (the workstation has it). Loopback key → configuration proof (this
+# host has that one, and the operator account deliberately does not carry it).
+# Anything else — an unreadable file, or a key this script does not recognise —
+# says so and SKIPS, because the old else-branch would have attempted a live
+# operator login with the wrong key and reported a public path that is not
+# broken as broken.
 LOCAL_FP=$(ssh-keygen -lf "$KEY" 2>/dev/null | awk '{print $2}')
-if [ "$LOCAL_FP" = "$LOOPBACK_FP" ]; then
-  out=$(rsh 'ssh-keygen -lf /etc/ssh/authorized_keys.d/hbohlen 2>/dev/null || ssh-keygen -lf /home/hbohlen/.ssh/authorized_keys 2>/dev/null')
-  check "the operator key is still authorized for the operator account (config; a live login needs the workstation's copy of that key)" "$OPERATOR_FP" "$out"
-  note "run from the host, so the live public-path login was not attempted — this key is the loopback one"
-else
-  out=$(osh 'hostname'); check "the operator key still logs in (this change must not weaken the public path)" "netcup" "$out"
-fi
+case "$LOCAL_FP" in
+  "$OPERATOR_FP")
+    out=$(osh 'hostname'); check "the operator key still logs in (this change must not weaken the public path)" "netcup" "$out"
+    ;;
+  "$LOOPBACK_FP")
+    out=$(rsh 'ssh-keygen -lf /etc/ssh/authorized_keys.d/hbohlen 2>/dev/null || ssh-keygen -lf /home/hbohlen/.ssh/authorized_keys 2>/dev/null')
+    check "the operator key is still authorized for the operator account (config; a live login needs the workstation's copy of that key)" "$OPERATOR_FP" "$out"
+    note "run from the host, so the live public-path login was not attempted — this key is the loopback one"
+    ;;
+  *)
+    note "the key at $KEY is neither the operator nor the loopback identity (fingerprint: ${LOCAL_FP:-unreadable}) — the operator public-path check was skipped here"
+    ;;
+esac
 
 step "the checkout is the published revision (see scripts/self-deploy-drift.sh for the verdict)"
 PUSHED=$(git -C "$REPO" ls-remote origin refs/heads/main 2>/dev/null | awk '{print $1}')
@@ -109,7 +126,7 @@ step "the loopback identity sits at the ONE declared path, mode 0600, operator-o
 # escalates with passwordless sudo. Mode 0600 and the path are unchanged.
 out=$(rsh "stat -c '%a %U:%G' $LOOPBACK_KEY 2>&1; ssh-keygen -y -f $LOOPBACK_KEY 2>/dev/null | ssh-keygen -lf - 2>/dev/null | awk '{print \$2}'")
 printf '%s\n' "$out" | sed 's/^/  /'
-check "mode and owner" "600 hbohlen:users" "$(printf '%s' "$out" | sed -n 1p)"
+check "mode and owner" "600 $KEY_OWNER" "$(printf '%s' "$out" | sed -n 1p)"
 check "fingerprint" "$LOOPBACK_FP" "$(printf '%s' "$out" | sed -n 2p)"
 
 step "root accepts that key on the loopback, with no agent and no password"
@@ -159,21 +176,33 @@ lrbranch=$(sed -n 's/^BRANCH=${BRANCH:-\([^}]*\)}.*/\1/p' "$REPO/scripts/self-de
 out=$(rsh "readlink /etc/netcup-self-deploy/loop.json; cat /etc/netcup-self-deploy/loop.json")
 printf '%s\n' "$out" | sed 's/^/  /'
 check "the running system carries the record" "/etc/static/netcup-self-deploy/loop.json" "$(printf '%s' "$out" | head -1)"
-printf '%s' "$out" | tail -n +2 | python3 -c '
-import json,sys
-want={"repository","branch","checkout","targetOverride","loopbackKey","authored"}
-try: d=json.loads(sys.stdin.read().strip())
-except Exception as e: print("  FAIL the record is not JSON: %s"%e); sys.exit(1)
-want_branch=sys.argv[1]
-bad=[]
-extra=set(d)-want
-if extra: bad.append("unexpected keys %s"%sorted(extra))
-if want-set(d): bad.append("missing keys %s"%sorted(want-set(d)))
-if d.get("branch")!=want_branch: bad.append("branch is %r, the drift check compares %r"%(d.get("branch"),want_branch))
-if d.get("targetOverride")!="machines.netcup.target.host:string root@localhost": bad.append("targetOverride is not the loopback override")
-if bad: print("  FAIL "+"; ".join(bad)); sys.exit(1)
-print("  OK   branch %r, the loopback override, and no key that should not be here"%want_branch)
-' "$lrbranch" || rc=1
+# PARSED WITH grep/SED, NOT python3 — MEASURED 2026-09-28: this host's system
+# profile carries no python3 (docs/self-deploy-netcup.md §6), so this gate died
+# in a clean login shell with `python3: command not found` and a CHECKS FAILED
+# line with NO FAIL above it, and the loop.json keys were never checked at all.
+# It passed only in the one shell that happened to have python3 on PATH — which
+# is how "ALL CHECKS GREEN" was reported for a script that fails by default.
+# Same rule self-deploy-run.sh already codes in for its own eval: coreutils,
+# sed, grep, awk and bash builtins, nothing more. This reads the record's key
+# set and the two values the loop depends on; it is not a JSON grammar parser.
+rec=$(printf '%s' "$out" | tail -n +2 | tr -d '\n')
+keys=$(printf '%s\n' "$rec" | sed 's/[{,]/\n/g' | sed -n 's/^"\([A-Za-z]*\)":.*/\1/p' | LC_ALL=C sort | tr '\n' ' ')
+want_keys="authored branch checkout loopbackKey repository targetOverride "
+want_branch=$lrbranch
+want_override="machines.netcup.target.host:string root@localhost"
+# One value out of a compact one-line object: the exact "key":"value" substring,
+# cut on quotes — a value carrying ':' or '/' (targetOverride, the checkout path)
+# survives, which a colon-split would not.
+jval() { printf '%s\n' "$rec" | grep -o "\"$1\":\"[^\"]*\"" | head -1 | cut -d'"' -f4; }
+bad=""
+printf '%s' "$rec" | grep -q '^{.*}$' || bad="${bad}the record is not one JSON object; "
+[ "$keys" = "$want_keys" ] || bad="${bad}keys are [$keys] expected [$want_keys]; "
+got_branch=$(jval branch); [ "$got_branch" = "$want_branch" ] \
+  || bad="${bad}branch is '$got_branch', the drift check compares '$want_branch'; "
+got_override=$(jval targetOverride); [ "$got_override" = "$want_override" ] \
+  || bad="${bad}targetOverride is not the loopback override; "
+if [ -n "$bad" ]; then printf '  FAIL %s\n' "$bad"; rc=1
+else printf "  OK   branch '%s', the loopback override, and no key that should not be here\n" "$want_branch"; fi
 
 step "the host's own build of its own declaration is the running system"
 out=$(rsh "cd $HOST_REPO && export SECRETSPEC_REASON='self-deploy verify: read the host deployment state' OP_SERVICE_ACCOUNT_TOKEN=\$(cat $CRED) NIX_SSHOPTS='-i $LOOPBACK_KEY -o IdentitiesOnly=yes' && ./bin/devenv machines status netcup -O machines.netcup.target.host:string root@localhost --no-tui 2>/dev/null; echo RC=\$?")
@@ -188,23 +217,31 @@ check "machines status exits 0" "RC=0" "$(printf '%s' "$out" | tail -1)"
 # requestedSystem that is not the running system.
 running=$(rsh 'readlink -f /run/current-system')
 printf '  /run/current-system: %s\n' "$running"
-printf '%s' "$out" | python3 -c '
-import json,sys,re
-raw=sys.stdin.read()
-running=sys.argv[1]
-m=re.search(r"\{.*\}", raw, re.S)
-if not m: print("  FAIL no JSON in machines status output"); sys.exit(1)
-d=json.loads(m.group(0))
-d=d.get("machines",{}).get("netcup", d.get("netcup", d))
-for k in ("phase","outcome","previousSystem","requestedSystem","runningSystem"):
-    if k in d: print("  %-16s %s"%(k,d[k]))
-prev,req=d.get("previousSystem"),d.get("requestedSystem")
-if d.get("outcome")=="succeeded" and req==running:
-    if prev!=req: print("  OK   the last deploy succeeded, and it moved the system: %s -> %s"%(prev,req))
-    else: print("  OK   the last deploy succeeded and activated the requested system (not rolled back)")
-else:
-    print("  FAIL phase=%r outcome=%r requestedSystem=%r running=%r"%(d.get("phase"),d.get("outcome"),req,running)); sys.exit(2)
-' "$running" || rc=1
+# SAME no-python3 RULE AS THE RECORD CHECK ABOVE (measured 2026-09-28): grep/SED
+# over the pretty-printed JSON `machines status` puts on stdout — the progress
+# lines are on stderr and were already dropped by 2>/dev/null, so what is left
+# here is JSON plus the trailing RC= line the step appended.
+sjson=$out
+jfield() { printf '%s' "$sjson" | grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 | cut -d'"' -f4; }
+phase=$(jfield phase); outcome=$(jfield outcome)
+prev=$(jfield previousSystem); req=$(jfield requestedSystem)
+if [ -z "$phase" ] && [ -z "$outcome" ]; then
+  printf '  FAIL no JSON in machines status output\n'; rc=1
+else
+  printf '  %-16s %s\n' phase "$phase"
+  printf '  %-16s %s\n' outcome "$outcome"
+  printf '  %-16s %s\n' previousSystem "$prev"
+  printf '  %-16s %s\n' requestedSystem "$req"
+  if [ "$outcome" = succeeded ] && [ -n "$req" ] && [ "$req" = "$running" ]; then
+    if [ "$prev" != "$req" ]; then
+      printf '  OK   the last deploy succeeded, and it moved the system: %s -> %s\n' "$prev" "$req"
+    else
+      printf '  OK   the last deploy succeeded and activated the requested system (not rolled back)\n'
+    fi
+  else
+    printf '  FAIL phase=%s outcome=%s requestedSystem=%s running=%s\n' "$phase" "$outcome" "$req" "$running"; rc=1
+  fi
+fi
 
 printf '\n'
 if [ "$rc" -eq 0 ]; then printf 'ALL CHECKS GREEN.\n'; else printf 'CHECKS FAILED (see the FAIL lines above).\n'; fi
