@@ -130,7 +130,16 @@ else
 fi
 
 if [ "$rc" -eq 0 ]; then
-  printf '\nNO DRIFT: the host holds the published revision, with nothing uncommitted.\n'
+  # The closing line has to distinguish the two ways to be clean, because a
+  # reader who sees "NO DRIFT" after a LAX check and reads it as "at the
+  # published revision" will skip the pull that step 2 does — measured
+  # 2026-09-28, when the lax run of the 7.4 loop printed exactly that.
+  if [ "$HEAD_REV" = "$PUSHED" ]; then
+    printf '\nNO DRIFT: the host holds the published revision, with nothing uncommitted.\n'
+  else
+    printf '\nNO DRIFT, BUT BEHIND: the host is clean and can fast-forward to %s.\n' "$PUSHED"
+    printf '  This is the expected state right after a push; the loop pulls next.\n'
+  fi
 else
   printf '\nDRIFT: settle this before deploying from the host.\n'
   printf '  a host that is merely behind:  ssh root@%s "git -C %s pull --ff-only"\n' "$PUBLIC" "$HOST_REPO"

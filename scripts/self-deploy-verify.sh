@@ -115,6 +115,31 @@ else
   note "$HOME/.config/op-sa-token is absent here, so the prefixes were not compared"
 fi
 
+step "the running system records the loop it runs (task 7.4's real change, read back)"
+# This is the fact 7.4 deploys: a declared file, not a mechanism, so that the
+# loop is proved to CHANGE something rather than only to work on a no-op. The
+# keys are checked as a set: the record is world-readable, and a field added to
+# it later is a field that could carry something that should not be there.
+lrbranch=$(sed -n 's/^BRANCH=${BRANCH:-\([^}]*\)}.*/\1/p' "$REPO/scripts/self-deploy-drift.sh" | head -1)
+out=$(rsh "readlink /etc/netcup-self-deploy/loop.json; cat /etc/netcup-self-deploy/loop.json")
+printf '%s\n' "$out" | sed 's/^/  /'
+check "the running system carries the record" "/etc/static/netcup-self-deploy/loop.json" "$(printf '%s' "$out" | head -1)"
+printf '%s' "$out" | tail -n +2 | python3 -c '
+import json,sys
+want={"repository","branch","checkout","targetOverride","loopbackKey","authored"}
+try: d=json.loads(sys.stdin.read().strip())
+except Exception as e: print("  FAIL the record is not JSON: %s"%e); sys.exit(1)
+want_branch=sys.argv[1]
+bad=[]
+extra=set(d)-want
+if extra: bad.append("unexpected keys %s"%sorted(extra))
+if want-set(d): bad.append("missing keys %s"%sorted(want-set(d)))
+if d.get("branch")!=want_branch: bad.append("branch is %r, the drift check compares %r"%(d.get("branch"),want_branch))
+if d.get("targetOverride")!="machines.netcup.target.host:string root@localhost": bad.append("targetOverride is not the loopback override")
+if bad: print("  FAIL "+"; ".join(bad)); sys.exit(1)
+print("  OK   branch %r, the loopback override, and no key that should not be here"%want_branch)
+' "$lrbranch" || rc=1
+
 step "the host's own build of its own declaration is the running system"
 out=$(rsh "cd $HOST_REPO && export SECRETSPEC_REASON='self-deploy verify: read the host deployment state' OP_SERVICE_ACCOUNT_TOKEN=\$(cat $CRED) NIX_SSHOPTS='-i $LOOPBACK_KEY -o IdentitiesOnly=yes' && ./bin/devenv machines status netcup -O machines.netcup.target.host:string root@localhost --no-tui 2>/dev/null; echo RC=\$?")
 printf '%s\n' "$out" | grep -v '^RC=' | head -40 | sed 's/^/  /'
