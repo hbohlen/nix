@@ -36,8 +36,9 @@
 # Neither mode merges, resets or discards anything. The check only reads.
 #
 # KNOWN DETAILS THIS SCRIPT CODES IN (measured 2026-09-27 / 2026-09-28):
-#   * The host's checkout is root-owned at /home/hbohlen/nix, because the deploy
-#     runs as root and `git pull` must be able to write there.
+#   * The host's checkout is OPERATOR-owned at /home/hbohlen/nix (changed
+#     2026-09-28, when the loop started running from this machine as hbohlen),
+#     so `git pull` and `git status` there run as that user.
 #   * `git status --porcelain` on a healthy host prints NOTHING: .devenv/,
 #     .devenv-toolchain and .machines/ are gitignored, so the toolchain symlink
 #     and the facter report are not mistaken for drift.

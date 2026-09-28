@@ -22,7 +22,12 @@
 #   * OP_SERVICE_ACCOUNT_TOKEN — without it 1Password cannot resolve the profile
 #                          and `machines` fails with a provider error that reads
 #                          like a machine error.
-# The token is read from the root-owned 0600 file (task 6.1) and never printed.
+# THE TOKEN IS READ FROM A ROOT-OWNED 0600 FILE (task 6.1) AND NEVER PRINTED.
+# As root that is /root/.config/op-sa-token; run as the operator (hbohlen), who
+# cannot read root's home, it is the operator's own copy at
+# ~/.config/op-sa-token — same mode, same read-only service-account token.
+# Measured 2026-09-28: the path is chosen by readability, so the same script
+# works for both callers and neither caller needs the other's home.
 #
 # KNOWN DETAILS THIS SCRIPT CODES IN (measured 2026-09-27):
 #   * The deployed host's /nix/store is rw only because nix-store-remount-rw
@@ -41,7 +46,10 @@ set -u
 
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 LOOPBACK_KEY=${LOOPBACK_KEY:-/home/hbohlen/.ssh/id_ed25519-op-dev}
-CRED=${CRED:-/root/.config/op-sa-token}
+if [ -z "${CRED:-}" ]; then
+  if [ -r /root/.config/op-sa-token ]; then CRED=/root/.config/op-sa-token
+  else CRED=${HOME:?HOME is unset}/.config/op-sa-token; fi
+fi
 TARGET_OVERRIDE="machines.netcup.target.host:string root@localhost"
 
 step() { printf '\n== %s ==\n' "$*"; }
@@ -77,8 +85,13 @@ printf '  NIX_SSHOPTS: -i %s -o IdentitiesOnly=yes\n' "$LOOPBACK_KEY"
 printf '  SECRETSPEC_REASON is set\n'
 
 step "the loopback identity authenticates root before the deploy depends on it"
+# The known-hosts file must be WRITABLE BY THE CALLER: root's path
+# (/root/.ssh/known_hosts) is what a root-run copy used, and as the operator it
+# fails with "Failed to add the host to the list of known hosts (/root/.ssh/
+# known_hosts)" — which the uid check below reads as a bad login. $HOME keeps
+# the right file for both callers, and the key and target are unchanged.
 out=$(ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
-        -o UserKnownHostsFile=/root/.ssh/known_hosts -i "$LOOPBACK_KEY" root@localhost 'id -u' 2>&1) \
+        -o UserKnownHostsFile=$HOME/.ssh/known_hosts -i "$LOOPBACK_KEY" root@localhost 'id -u' 2>&1) \
   || fail "ssh root@localhost with $LOOPBACK_KEY failed: $out"
 [ "$out" = "0" ] || fail "loopback login reports uid '$out', not 0"
 printf '  ssh root@localhost -> uid 0\n'

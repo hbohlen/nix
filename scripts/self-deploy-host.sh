@@ -29,8 +29,9 @@
 #      requested, so a pane's tail shows whether it landed or rolled back.
 #
 # KNOWN DETAILS THIS SCRIPT CODES IN (measured 2026-09-27):
-#   * The host's checkout is root-owned; only root can pull it, and the deploy
-#     runs as root anyway.
+#   * The host's checkout is OPERATOR-owned at /home/hbohlen/nix (changed
+#     2026-09-28, when the loop started running from this machine as hbohlen);
+#     both `git pull` and the deploy run as that user now.
 #   * THE HOST HAS NO PUSH CREDENTIAL. The repository is public so the CLONE
 #     needs no credential, and a push from the host fails for exactly that
 #     reason. Edits are therefore AUTHORED on the workstation and PUSHED from it;

@@ -85,10 +85,14 @@ check "the unit's result is success" "success" "$(printf '%s' "$out" | sed -n 2p
 if printf '%s' "$out" | sed -n 3p | grep -qE '(^|,)rw(,|$)'; then printf '  OK   /nix/store is mounted rw\n'
 else printf '  FAIL /nix/store is not mounted rw — the host can receive closures but cannot build one\n'; rc=1; fi
 
-step "the loopback identity sits at the ONE declared path, root-owned 0600 (design D4)"
+step "the loopback identity sits at the ONE declared path, mode 0600, operator-owned"
+# OWNER CHANGED 2026-09-28, deliberately: it was root:root (design D4) when the
+# deploy ran as root. The working user now runs the deploy itself, so hbohlen
+# must read the key — and that grants no new privilege, because hbohlen already
+# escalates with passwordless sudo. Mode 0600 and the path are unchanged.
 out=$(rsh "stat -c '%a %U:%G' $LOOPBACK_KEY 2>&1; ssh-keygen -y -f $LOOPBACK_KEY 2>/dev/null | ssh-keygen -lf - 2>/dev/null | awk '{print \$2}'")
 printf '%s\n' "$out" | sed 's/^/  /'
-check "mode and owner" "600 root:root" "$(printf '%s' "$out" | sed -n 1p)"
+check "mode and owner" "600 hbohlen:users" "$(printf '%s' "$out" | sed -n 1p)"
 check "fingerprint" "$LOOPBACK_FP" "$(printf '%s' "$out" | sed -n 2p)"
 
 step "root accepts that key on the loopback, with no agent and no password"
