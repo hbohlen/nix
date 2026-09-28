@@ -111,13 +111,20 @@ A healthy run is short and looks like this (2026-09-28, a real change:
     ./scripts/bb-pane-run.sh --title "host preconditions" -- ./scripts/self-deploy-verify.sh
 
 Read-only, over the public path: the host answers as root **and** as the
-operator; the checkout is the published revision; the nix features, `git` and
+operator (from the workstation as a live login; from the host, where that key
+does not exist, as the authorized-keys configuration — both are the same
+question, answered with what the caller can prove); the checkout is the
+published revision; the nix features, `git` and
 `op` are installed; the store is `rw` and the remount unit's `Result=success`;
 the loopback identity's mode and fingerprint; a loopback login with no agent; a
 store over the loopback answering a question about the running system; the
 credential's mode and sha256 prefix on both machines (the value is never read
 out); the loop record in the running system; and `machines status` reporting
-`phase: succeeded` with `previousSystem == requestedSystem`.
+`phase: succeeded` with `requestedSystem` equal to `/run/current-system` — what
+the last run asked for is what runs. (This line used to read
+`previousSystem == requestedSystem`, which only holds while every deploy is a
+no-op; the first real change of 2026-09-28 disproved it, and the verifier now
+asserts the running system instead.)
 
 ## 4. The drift check
 

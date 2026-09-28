@@ -38,6 +38,7 @@ PUBLIC=${PUBLIC:-152.53.92.126}
 HOST_REPO=${HOST_REPO:-/home/hbohlen/nix}
 LOOPBACK_KEY=${LOOPBACK_KEY:-/home/hbohlen/.ssh/id_ed25519-op-dev}
 LOOPBACK_FP=${LOOPBACK_FP:-SHA256:WgXJgoyQQ9pTLPVcWL31pnzNFPo/qR0zSPXmj6PEK8I}
+OPERATOR_FP=${OPERATOR_FP:-SHA256:HvoLYt+w9VdcQPwLsF72g9/BZRlwjIaNkHkhJuNHqIQ}
 CRED=${CRED:-/root/.config/op-sa-token}
 
 SSHOPTS=(-F /dev/null -o BatchMode=yes -o ConnectTimeout=10 -o IdentitiesOnly=yes \
@@ -61,7 +62,23 @@ tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 step "the host answers as root over the public path"
 out=$(rsh 'hostname') || { printf '  FAIL cannot reach %s as root\n' "$PUBLIC"; exit 1; }
 check "hostname" "netcup" "$out"
-out=$(osh 'hostname'); check "the operator key still logs in (this change must not weaken the public path)" "netcup" "$out"
+# SAME QUESTION, TWO CALLERS, AND THE CALLER DECIDES WHICH PROOF IT CAN GIVE.
+# From the WORKSTATION $KEY is the operator's private half, so the login below
+# is a live test of the public path. From THIS HOST the key at the one declared
+# path is the loopback one (fingerprint $LOOPBACK_FP): the operator account
+# deliberately does not carry it, so `ssh hbohlen@public` with it is refused on
+# purpose — measured 2026-09-28 — and a live login from here would prove
+# nothing about the operator path. What the host can still prove is the
+# deployed configuration: the operator public half is the key authorized for
+# that account, read back from the running system.
+LOCAL_FP=$(ssh-keygen -lf "$KEY" 2>/dev/null | awk '{print $2}')
+if [ "$LOCAL_FP" = "$LOOPBACK_FP" ]; then
+  out=$(rsh 'ssh-keygen -lf /etc/ssh/authorized_keys.d/hbohlen 2>/dev/null || ssh-keygen -lf /home/hbohlen/.ssh/authorized_keys 2>/dev/null')
+  check "the operator key is still authorized for the operator account (config; a live login needs the workstation's copy of that key)" "$OPERATOR_FP" "$out"
+  note "run from the host, so the live public-path login was not attempted — this key is the loopback one"
+else
+  out=$(osh 'hostname'); check "the operator key still logs in (this change must not weaken the public path)" "netcup" "$out"
+fi
 
 step "the checkout is the published revision (see scripts/self-deploy-drift.sh for the verdict)"
 PUSHED=$(git -C "$REPO" ls-remote origin refs/heads/main 2>/dev/null | awk '{print $1}')
@@ -162,9 +179,19 @@ step "the host's own build of its own declaration is the running system"
 out=$(rsh "cd $HOST_REPO && export SECRETSPEC_REASON='self-deploy verify: read the host deployment state' OP_SERVICE_ACCOUNT_TOKEN=\$(cat $CRED) NIX_SSHOPTS='-i $LOOPBACK_KEY -o IdentitiesOnly=yes' && ./bin/devenv machines status netcup -O machines.netcup.target.host:string root@localhost --no-tui 2>/dev/null; echo RC=\$?")
 printf '%s\n' "$out" | grep -v '^RC=' | head -40 | sed 's/^/  /'
 check "machines status exits 0" "RC=0" "$(printf '%s' "$out" | tail -1)"
+# THE INVARIANT IS "WHAT THE RUN ASKED FOR IS WHAT RUNS", NOT "previousSystem
+# == requestedSystem". That older proxy only held while every deploy was a
+# no-op: measured 2026-09-28, the first real change (the /etc/gitconfig
+# declaration) made it print FAIL on a deploy that succeeded, because
+# previousSystem is the system from BEFORE the change and is supposed to differ.
+# A rolled-back deploy fails this instead on `outcome`, and on a
+# requestedSystem that is not the running system.
+running=$(rsh 'readlink -f /run/current-system')
+printf '  /run/current-system: %s\n' "$running"
 printf '%s' "$out" | python3 -c '
 import json,sys,re
 raw=sys.stdin.read()
+running=sys.argv[1]
 m=re.search(r"\{.*\}", raw, re.S)
 if not m: print("  FAIL no JSON in machines status output"); sys.exit(1)
 d=json.loads(m.group(0))
@@ -172,14 +199,12 @@ d=d.get("machines",{}).get("netcup", d.get("netcup", d))
 for k in ("phase","outcome","previousSystem","requestedSystem","runningSystem"):
     if k in d: print("  %-16s %s"%(k,d[k]))
 prev,req=d.get("previousSystem"),d.get("requestedSystem")
-if d.get("outcome")=="succeeded" and prev==req:
-    print("  OK   the last deploy succeeded and activated the requested system (not rolled back)")
+if d.get("outcome")=="succeeded" and req==running:
+    if prev!=req: print("  OK   the last deploy succeeded, and it moved the system: %s -> %s"%(prev,req))
+    else: print("  OK   the last deploy succeeded and activated the requested system (not rolled back)")
 else:
-    print("  FAIL phase=%r outcome=%r previousSystem=%r requestedSystem=%r"%(d.get("phase"),d.get("outcome"),prev,req)); sys.exit(2)
-' || rc=1
-
-out=$(rsh 'readlink -f /run/current-system')
-printf '  /run/current-system: %s\n' "$out"
+    print("  FAIL phase=%r outcome=%r requestedSystem=%r running=%r"%(d.get("phase"),d.get("outcome"),req,running)); sys.exit(2)
+' "$running" || rc=1
 
 printf '\n'
 if [ "$rc" -eq 0 ]; then printf 'ALL CHECKS GREEN.\n'; else printf 'CHECKS FAILED (see the FAIL lines above).\n'; fi
