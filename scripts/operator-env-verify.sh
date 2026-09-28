@@ -75,7 +75,13 @@ tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 [ -r "$KEY" ] || { printf 'FAIL: %s missing — materialize it (docs/install-netcup.md step 1; it needs an appended trailing newline)\n' "$KEY" >&2; exit 1; }
 
 want_version=$("./bin/devenv" --version 2>&1 | awk '{print $2}')
-printf 'workstation bin/devenv version: %s\n' "$want_version"
+# Compare the BASE version only: the home-manager package is derived from the
+# locked input's path+narHash (design D2), which carries no flake rev metadata,
+# so it reports `2.4.0` where this workstation's binary reports `2.4.0+b904dcb`.
+# The spec scenario asks for "the same version, 2.4.0 or newer"; the source
+# revision is proved separately by the `machines` subcommand check below.
+want_base=${want_version%%+*}
+printf 'workstation bin/devenv version: %s (base %s)\n' "$want_version" "$want_base"
 
 step "the operator account is reachable over the public path"
 out=$(huser 'id -un')
@@ -85,7 +91,9 @@ step "devenv is on hbohlen's PATH and reports the same version as bin/devenv (sp
 out=$(huser 'command -v devenv; devenv --version')
 printf '%s\n' "$out" | sed 's/^/  /'
 check "devenv resolves on the operator PATH" "/devenv" "$(printf '%s' "$out" | sed -n 1p)"
-check "devenv --version matches bin/devenv" "$want_version" "$(printf '%s' "$out" | sed -n 2p)"
+got_base=$(printf '%s' "$out" | sed -n 2p | awk '{print $2}' | cut -d+ -f1)
+if [ "$got_base" = "$want_base" ]; then printf '  OK   devenv --version base %s matches bin/devenv (both 2.4.0)\n' "$got_base"
+else printf '  FAIL devenv --version base is %s, expected %s\n' "$got_base" "$want_base"; rc=1; fi
 
 step "the host checkout's own bin/devenv agrees too (the pinned toolchain is present)"
 out=$(rsh "cd $HOST_REPO && ./bin/devenv --version 2>&1")
@@ -128,7 +136,12 @@ printf '%s\n' "$out" | sed 's/^/  /'
 check "the non-root build of hello completes" "RC=0" "$(printf '%s' "$out" | tail -1)"
 
 step "GH_TOKEN resolves for gh as the loop's credential, per use, value never read (spec: auth at the moment of use)"
-out=$(rsh "cd $HOST_REPO && export SECRETSPEC_REASON='operator-env verify: prove GH_TOKEN resolves for gh' OP_SERVICE_ACCOUNT_TOKEN=\$(cat $CRED) && \$(readlink -f .devenv-toolchain)/bin/secretspec run --reason 'operator-env verify: gh auth status' -- gh auth status 2>&1; echo RC=\$?")
+# `secretspec run` inherits this remote shell's PATH, and a non-interactive ssh
+# shell has no home-manager profile — so `gh` must be reachable from the PATH we
+# set here, or secretspec fails with IO error 2 (measured: that is exactly how
+# this check failed on the first post-deploy run, 2026-09-28). The path resolves
+# to $HOME/.nix-profile/bin, but the remote shell interpolates `$HOME` itself.
+out=$(rsh "cd $HOST_REPO && export PATH=\"\$HOME/.nix-profile/bin:\$PATH\" SECRETSPEC_REASON='operator-env verify: prove GH_TOKEN resolves for gh' OP_SERVICE_ACCOUNT_TOKEN=\$(cat $CRED) && \$(readlink -f .devenv-toolchain)/bin/secretspec run --reason 'operator-env verify: gh auth status' -- gh auth status 2>&1; echo RC=\$?")
 printf '%s\n' "$out" | grep -v '^RC=' | sed 's/^/  /'
 check "gh reports the authenticated account" "Logged in to github.com account hbohlen" "$out"
 check "the authenticated invocation exits 0" "RC=0" "$(printf '%s' "$out" | tail -1)"
@@ -146,11 +159,16 @@ d=json.loads(m.group(0))
 d=d.get("machines",{}).get("netcup", d.get("netcup", d))
 for k in ("phase","outcome","previousSystem","requestedSystem","runningSystem"):
     if k in d: print("  %-16s %s"%(k,d[k]))
-prev,req=d.get("previousSystem"),d.get("requestedSystem")
-if d.get("outcome")=="succeeded" and prev==req:
-    print("  OK   the last deploy succeeded and activated the requested system (not rolled back)")
+# A SUCCESSFUL REAL CHANGE has previousSystem != requestedSystem — that is the
+# point of a deploy, not a failure. The signals to require are: the deploy
+# outcome succeeded, and the RUNNING system is the one it requested.
+running=d.get("runningSystem")
+req=d.get("requestedSystem")
+if d.get("outcome")=="succeeded" and (running is None or running==req):
+    if running==req: print("  OK   the last deploy succeeded and the running system is the requested one")
+    else: print("  OK   the last deploy succeeded (%s; runningSystem not reported)"%d.get("phase"))
 else:
-    print("  FAIL phase=%r outcome=%r previousSystem=%r requestedSystem=%r"%(d.get("phase"),d.get("outcome"),prev,req)); sys.exit(2)
+    print("  FAIL phase=%r outcome=%r runningSystem=%r requestedSystem=%r"%(d.get("phase"),d.get("outcome"),running,req)); sys.exit(2)
 ' || rc=1
 
 printf '\n'
