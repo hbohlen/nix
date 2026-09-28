@@ -6,8 +6,11 @@
 # one more thing between us and a first boot, and none of them help a host
 # partition its disk.
 #
-# Use `bin/devenv` (pinned 2.4.0), NEVER bare `devenv`: the global profile
-# binary is 2.2.2 and has no `machines` subcommand at all. See bin/devenv.
+# Use `bin/devenv` (pinned 2.4.0), NEVER bare `devenv` — on this workstation.
+# The rule is workstation-only: the global profile binary is 2.2.2 and has no
+# `machines` subcommand, but on the netcup host the operator's home-manager role
+# installs a bare `devenv` at the SAME 2.4.0 (hosts/netcup/operator.nix), so
+# there the two names agree. See bin/devenv and docs/handoff-followups.md §6.
 {
   machines.netcup = {
     # What sets nixpkgs.hostPlatform. Devenv builds its own module list
@@ -93,5 +96,17 @@
         # business in this layout, the same way devenv owns hostPlatform.
         networking.hostName = "netcup";
       };
+
+    # THE OPERATOR'S USER-LEVEL ENVIRONMENT, as a SECOND role on the SAME
+    # Machine (design D1). It reuses this block's `target.host` and
+    # `target.sshOpts` — there is no second Machine declaration and no second
+    # SSH identity — and devenv's activation driver drops root to `home.username`
+    # at activation time. The system role above activates FIRST, so a system
+    # failure is never masked by a user-environment failure.
+    #
+    # The home-manager backing input is declared in devenv.yaml; this role
+    # content lives beside its justification in ./hosts/netcup/operator.nix
+    # (the ./tailnet.nix / ./self-deploy.nix pattern, design D3).
+    home-manager = import ./hosts/netcup/operator.nix;
   };
 }

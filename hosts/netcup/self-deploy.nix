@@ -25,6 +25,7 @@
 # this change.
 {
   pkgs,
+  lib,
   ...
 }:
 
@@ -39,6 +40,36 @@
   # (`require-sigs = true`), which is the failure docs/handoff-followups.md §3
   # records from the non-root deploy attempt.
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
+
+  # THE CACHE THE TOOLCHAIN COMES FROM, DECLARED BY THE HOST RATHER THAN PASSED
+  # BY A CALLER (design D5).
+  #
+  # WHY THIS IS NOT AN `--option extra-substituters` ANYMORE. Every previous
+  # build of the pinned devenv on a machine without a cachix substituter
+  # compiled the whole Rust workspace from source. `bin/devenv` documents the
+  # per-invocation flags that fix that on the WORKSTATION, where `trusted-users`
+  # includes the operator. On THIS host `trusted-users = root`, and nix SILENTLY
+  # DROPS a substituter an untrusted user supplies on the command line —
+  # measured 2026-09-28: `sudo -n -u nobody … nix-store -r <bogus> --option
+  # substituters https://example.invalid` never contacted the cache and failed
+  # with a generic "no substituter that can build it", while the identical run
+  # as root contacted it and retried five times. `nix config show` is an invalid
+  # instrument here: it prints the setting as applied without negotiating trust.
+  #
+  # So a non-root build (`hbohlen` on the host, once the home-manager role puts
+  # `devenv` on that account's PATH) can only substitute if the HOST declares
+  # the cache. `lib.mkAfter` APPENDS to nixpkgs' defaults rather than replacing
+  # them, so `cache.nixos.org` and its key stay in the list — the host keeps
+  # substituting its own closure.
+  #
+  # `trusted-users` is deliberately NOT widened (self-deploy D5): that would be
+  # a permanent privilege grant for what is a cache problem, and the operator's
+  # non-root builds only need to READ from the cache. The key is the same one
+  # bin/devenv documents.
+  nix.settings.substituters = lib.mkAfter [ "https://devenv.cachix.org" ];
+  nix.settings.trusted-public-keys = lib.mkAfter [
+    "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw="
+  ];
 
   # git and the 1Password CLI, and nothing else.
   #

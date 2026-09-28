@@ -74,3 +74,24 @@ inputs:
     inputs:
       nixpkgs:
         follows: nixpkgs
+
+  # home-manager — the operator account's user environment on the host
+  # (`machines.netcup.home-manager`, hosts/netcup/operator.nix). MANDATORY once
+  # that role is declared: devenv's machines module reads it lazily and, if the
+  # input is absent, fails eval with a targeted error naming
+  # `machines.<name>.home-manager`. The URL and the `follows: nixpkgs` nesting
+  # are copied from `homeManagerInputArgs` in devenv 2.4.0's machines.nix, and
+  # the nesting is the same one the disko block above explains — the flat
+  # `follows: nixpkgs` form silently locks the input as an alias instead of a
+  # node.
+  #
+  # It floats on master until `devenv.lock` pins it. Risk R2: master may not
+  # pair with devenv-nixpkgs/rolling, which home-manager warns about through
+  # `home.enableNixpkgsReleaseCheck`. If eval warns or breaks, pin this URL to
+  # the release branch matching `system.stateVersion = "26.11"`, or disable the
+  # check with the reason written down (design R2).
+  home-manager:
+    url: github:nix-community/home-manager
+    inputs:
+      nixpkgs:
+        follows: nixpkgs

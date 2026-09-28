@@ -14,7 +14,11 @@
 # so without them nix compiles the whole Rust workspace instead of fetching the
 # prebuilt wrapper. Verified: `devenv --version` reports 2.4.0+b904dcb.
 #
-# Use `bin/devenv …` for machine commands, never bare `devenv`.
+# Use `bin/devenv …` for machine commands, never bare `devenv` — on this
+# workstation. The rule is workstation-only (design R7 trade-off): on the
+# netcup host the operator's home-manager role installs a bare `devenv` pinned
+# to the SAME 2.4.0 as this script (hosts/netcup/operator.nix), so there the two
+# names agree by construction. See docs/handoff-followups.md §6.
 set -eu
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

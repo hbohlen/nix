@@ -200,8 +200,11 @@ which decision was taken and why it is closed.
 
 ## 6. Mechanics a fresh session needs (and will otherwise rediscover)
 
-- **Use `./bin/devenv`, not `devenv`.** Bare `devenv` on this workstation is
-  2.2.2 and has no `machines` subcommand; the repo pins 2.4.0 and gcroots it.
+- **Use `./bin/devenv`, not `devenv` — on THIS WORKSTATION.** Bare `devenv` on
+  this workstation is 2.2.2 and has no `machines` subcommand; the repo pins
+  2.4.0 and gcroots it. The rule is workstation-only: on the netcup host the
+  operator's home-manager role installs a bare `devenv` at the *same* 2.4.0
+  (`hosts/netcup/operator.nix`), so there the two names agree by construction.
 - **Test an access hypothesis without editing `devenv.nix`:** override the target
   on the command line, e.g. `./bin/devenv machines status netcup -O
   machines.netcup.target.host:string hbohlen@152.53.92.126`. `status` and
@@ -339,23 +342,30 @@ which decision was taken and why it is closed.
    "prohibit-password"` — they gain nothing over SSH), and they live outside
    the configuration, so a **re-image wipes them** and they must be set again
    at bring-up. They are recorded nowhere; the operator must remember them.
-7. **Does the host need `gh` at all?** *(Asked 2026-09-28; not answered.)*
-   Measured: the repo is **public** (`api.github.com` says
-   `visibility: public`), so the host's clone and `git pull --ff-only` are
-   anonymous — the `could not read Username` in `docs/self-deploy-netcup.md`
-   §1 is from `push --dry-run`, and the host is *designed* never to push. So
-   `GH_TOKEN` buys **nothing for today's loop**. It matters only if (a) the
-   repo goes private, or (b) `gh` is wanted on the host for API work — in
-   which case decide delivery: per-use `op read` under the host's D3
-   credential (no token at rest) vs `gh` configured at rest (root-`0600`),
-   and note `pkgs.gh` is not in `systemPackages` yet.
-8. **Add `GH_TOKEN` to `secretspec.toml`?** The ref shape is ready —
+7. **Does the host need `gh` at all?** *(Asked 2026-09-28; **answered** by
+   change `add-netcup-operator-env`.)* Measured: the repo is **public**
+   (`api.github.com` says `visibility: public`), so the host's clone and
+   `git pull --ff-only` are anonymous — the `could not read Username` in
+   `docs/self-deploy-netcup.md` §1 is from `push --dry-run`, and the host is
+   *designed* never to push. So `GH_TOKEN` buys **nothing for today's loop**
+   (a fact this change does not dispute): it is headroom for (a) a future
+   private flip or (b) host-side API work. The delivery question in this item
+   was decided the per-use way: `gh` is installed by the operator's
+   home-manager role (`hosts/netcup/operator.nix`), and the token is declared
+   in `secretspec.toml`, resolved by `secretspec run` at the moment of use —
+   **no token at rest**, neither in the tree, the store, nor `~/.config/gh`.
+   `pkgs.gh` is now on `hbohlen`'s PATH rather than in `systemPackages`.
+8. **Add `GH_TOKEN` to `secretspec.toml`?** *(Asked 2026-09-28;
+   **answered yes** by change `add-netcup-operator-env`.)* The entry is now in
+   `[profiles.default]`:
    `GH_TOKEN = { providers = ["dev"], ref = { item = "GH_TOKEN", field =
-   "credential" } }` (measured: addressing works). Cost: one more secret on
-   the **every**-`machines`-invocation resolution path (already accepted for
-   `TS_AUTH_KEY`). The same change should rewrite `secretspec.toml`'s stale
-   "the service account is READ-ONLY … nothing in this repository writes to
-   the vault" comment — disproved 2026-09-28 (§9).
+   "credential" } }` (measured: addressing works). Cost, accepted like
+   `TS_AUTH_KEY` before it: one more secret on the **every**-`machines`
+   invocation resolution path, on both machines. The same change rewrote
+   `secretspec.toml`'s stale "the service account is READ-ONLY … nothing in
+   this repository writes to the vault" comment — disproved 2026-09-28 (§9):
+   the write grant is absent from the *file* token the `machines` path uses,
+   but present on the separate vault item `OP_SERVICE_ACCOUNT_TOKEN`.
 9. **Token consolidation and one rotation decision.** The file token is the
    old read-only one; the write token lives only in a vault item whose value
    carries an assignment prefix; two stale `Service Account Auth Token: dev`
@@ -559,8 +569,9 @@ loop moved to loopback.
 | 2 | R-A vs R-B console recovery design (= Q6) | decision | **LARGELY SETTLED 2026-09-28 — R-A done by hand (`passwd root` + `passwd hbohlen`, both now `P`), zero config change; option (B)'s re-lock trap measured false here.** Residue: (a) ~~rehearse R-B once~~ **DEFERRED by the operator — not doing it now**, (b) decide whether the passwords should survive a re-image (only declarative delivery does). |
 | 3 | Tailnet-only access (= Q2, §3 (a), §4 item 2) | change | scoped; **unblocked** — the recovery precondition (#2) is satisfied, so a working console fallback now exists |
 | 4 | Install-time `TS_AUTH_KEY` delivery proof (= §4.1) | evidence | **DEFERRED 2026-09-28 by the operator** — "keep iterating on what we have": no re-image is scheduled just to prove delivery. The §4.1 hazard still stands as written: if public SSH is ever closed before delivery has proven itself on a real re-image, the recovery path (#2) is the *only* safety net. |
-| 5 | `GH_TOKEN` in `secretspec.toml` (Q7/Q8) | decision | lean **no change** (premise measured false, §9) |
+| 5 | `GH_TOKEN` in `secretspec.toml` (Q7/Q8) | decision | **DONE 2026-09-28 — change `add-netcup-operator-env`:** entry added to `[profiles.default]`; `gh` installed per-user via the new `home-manager` role; delivery per-use (`secretspec run`), no token at rest |
 | 6 | Write-token rotation (Q9) | vault action | **CLOSED 2026-09-28 — not doing it.** Scrollback residue accepted; no vault action, no repo change. |
 | 7 | `Purpose: TBD` in the five untouched specs | hygiene | open, small |
 | 8 | Second host `oci` (Q5) | scope | open; gates generalizing the module shape |
-| 9 | Snapshots, zram, sops-nix, operator tooling | greenfield | not discussed |
+| 9 | Snapshots, zram, sops-nix, operator tooling | greenfield | operator tooling **STARTED 2026-09-28 — change `add-netcup-operator-env`:** a `home-manager` role on `machines.netcup` puts a pinned `devenv` (2.4.0, from the locked `devenv:` input) and `gh` on `hbohlen`'s PATH, declares `~/projects`, and declares `devenv.cachix.org` in the host's `nix.settings`. This **closes self-deploy design Q7** (should the operator account get a home-manager role): yes. Snapshots, zram and sops-nix still not discussed |
+| 10 | Agent runner on netcup: `devenv processes` vs always-on services | decision | open — scoped in explore-mode 2026-09-28: `devenv processes` is SESSION-scoped (tied to a login, dies with it), so boot-surviving agent jobs need NixOS `services.*` or lingered user units (`users.users.<name>.linger` confirmed present in the NixOS manual; eval against the locked nixpkgs still owed). Closely coupled: making non-root builds substitute on the host needs `devenv.cachix.org` declared in `nix.settings.substituters`/`trusted-public-keys` — measured 2026-09-28 (workstation, nix 2.34.x) that the daemon SILENTLY DROPS an untrusted user's `--option extra-substituters` (`nix-store -r` probe as an untrusted user: bogus cache never contacted; as root: contacted), while `trusted-users` on the host is `root` only |
