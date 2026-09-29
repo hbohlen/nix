@@ -8,6 +8,8 @@
 .direnv/
 result
 result-*
+# Issue tracker: local markdown tickets live here, per docs/agents/issue-tracker.md.
+.scratch
 # The nixos-facter report `devenv machines install` writes. The Machine sets
 # hardware.facter = null and does not consume it, so this is a local record of
 # the measured hardware, not config. Tracking it would make a later switch to
