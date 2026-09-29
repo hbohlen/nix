@@ -128,7 +128,7 @@ in place — but the boundary is no longer where it was.
 ## Layout
 
     devenv.nix         the Machine declaration + the workstation `imports`
-    devenv.yaml        inputs (devenv v2.4.0, disko, home-manager, llm-agents) + secretspec
+    devenv.yaml        inputs (devenv v2.4.0, disko, llm-agents) + secretspec
     devenv.lock        the pins
     modules/           the shell layer, imported by devenv.nix
                          tooling.nix     non-agent CLIs (locked nixpkgs)
@@ -143,8 +143,6 @@ in place — but the boundary is no longer where it was.
                          hardware.nix    the hand-written hardware facts
                          tailnet.nix     overlays, no firewall change
                          self-deploy.nix nix settings, caches, git, the loop record
-                         operator.nix    the operator's home-manager role
-                         agents.nix      hermes-agent + herdr
     dsh/               the dsh Web instance's seed material and runtime home
     docs/              operator runbooks (shell.md, dsh-web-endpoint.md)
     docs/adr/          the decisions that are hard to reverse

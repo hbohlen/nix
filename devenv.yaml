@@ -96,30 +96,19 @@ inputs:
       nixpkgs:
         follows: nixpkgs
 
-  # home-manager — the operator account's user environment on the host
-  # (`machines.netcup.home-manager`, hosts/netcup/operator.nix). MANDATORY once
-  # that role is declared: devenv's machines module reads it lazily and, if the
-  # input is absent, fails eval with a targeted error naming
-  # `machines.<name>.home-manager`. The URL and the `follows: nixpkgs` nesting
-  # are copied from `homeManagerInputArgs` in devenv 2.4.0's machines.nix, and
-  # the nesting is the same one the disko block above explains — the flat
-  # `follows: nixpkgs` form silently locks the input as an alias instead of a
-  # node.
-  #
-  # It floats on master until `devenv.lock` pins it. Risk R2: master may not
-  # pair with devenv-nixpkgs/rolling, which home-manager warns about through
-  # `home.enableNixpkgsReleaseCheck`. If eval warns or breaks, pin this URL to
-  # the release branch matching `system.stateVersion = "26.11"`, or disable the
-  # check with the reason written down (design R2).
-  home-manager:
-    url: github:nix-community/home-manager
-    inputs:
-      nixpkgs:
-        follows: nixpkgs
+  # home-manager — REMOVED by ticket 08 (D48). The input existed only for
+  # `machines.netcup.home-manager` (hosts/netcup/operator.nix), and that role is
+  # gone: netcup's Machine is the irreducible six, and the packages the role
+  # carried (`gh`, `hermes-agent`, `herdr`) are shell-layer declarations now.
+  # `devenv.lock` was pruned to match: devenv's own resolution dropped the
+  # `home-manager` node and its root reference, and `git diff` shows no other pin
+  # moved.
 
-  # llm-agents — the agent tooling the operator account carries
-  # (`hermes-agent` + `herdr`, hosts/netcup/agents.nix). NOT in nixpkgs, and
-  # absent from both caches this host declared until now.
+  # llm-agents — the agent tooling the SHELL LAYER declares (modules/agents.nix
+  # for the CLIs, modules/dsh.nix for dsh). Since ticket 08 it no longer serves
+  # the netcup machine layer: the host's home-manager role that consumed it for
+  # `hermes-agent` + `herdr` is gone, and those tools arrive through the shell.
+  # NOT in nixpkgs, and absent from both caches this host declared until now.
   #
   # IT DELIBERATELY DOES NOT FOLLOW nixpkgs (design D2). llm-agents.nix is only
   # built and tested against its own pinned `nixpkgs-unstable`, and its README

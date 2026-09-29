@@ -1,9 +1,9 @@
 # modules/agents.nix — the agent CLIs, from the pinned `llm-agents` input.
 #
-# D19/D25: one input, declared once, serving BOTH the shell layer on the
-# workstation and netcup's machine layer (`hosts/netcup/agents.nix`). The host
-# already consumes this input for `hermes-agent` and `herdr`, so this module is
-# the workstation half of the same declaration.
+# D19/D25: one input, one source of truth for the agent CLIs. Since ticket 08
+# this module is the only consumer of `llm-agents` for tooling: the netcup
+# machine layer's home-manager role (`hosts/netcup/agents.nix`) is gone, and on
+# the host these tools now arrive through this shell layer alone.
 #
 # THE COST, STATED WHERE IT IS PAID: `llm-agents` deliberately does NOT follow
 # nixpkgs (design D2 in devenv.yaml), so this brings a SECOND nixpkgs into the

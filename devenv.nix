@@ -5,10 +5,11 @@
 # in ./modules/*.nix and is imported below, per D13.
 #
 # Use `bin/devenv` (pinned 2.4.0), NEVER bare `devenv` — on a workstation.
-# The rule is workstation-only: the global profile binary there is 2.2.2 and has
-# no `machines` subcommand. On this host the operator's home-manager role
-# installs a bare `devenv` at the SAME 2.4.0 (hosts/netcup/operator.nix), so the
-# two names agree and either works.
+# The global profile binary there is 2.2.2 and has no `machines` subcommand.
+# Since ticket 08 there is no home-manager role on the host either, so the
+# host's CLI is this same `bin/devenv` script plus its `.devenv-toolchain`
+# (built with `nix build`, see bin/devenv's header): one entry point, both
+# machines.
 {
   # THE WORKSTATION HALF, split per D13: one module per tool group, imported
   # here beside the Machine declaration that is the host half. The split is not
@@ -100,6 +101,24 @@
       mode = "0600";
     };
 
+    # THE DEPLOY KNOBS, declared rather than left to the module defaults because
+    # the research's irreducible layer names them (`devenv-machines-minimal-layer.md`,
+    # items 4). They are the only two deploy-time controls the machine keeps.
+    #
+    # rollbackTimeout is the documented default, stated so the number is a
+    # decision here rather than an upstream default nobody read. The bound is
+    # 30..600 s; the promoted shell stack's activation copies closures, so there
+    # is no reason to shorten it.
+    deploy.rollbackTimeout = 300;
+
+    # healthCheck is deliberately the module default ("true"): the real gate is
+    # transactional activation plus the target-side watchdog, and a stricter
+    # check written now would assert a state (Caddy and the upstreams answering)
+    # that the promotion has not landed yet — a health check that fails on a
+    # healthy host is how a green deploy gets rolled back. The promoted stack's
+    # real check is ticket 08's deploy step.
+    deploy.healthCheck = "true";
+
     nixos =
       { ... }:
       {
@@ -110,16 +129,23 @@
         networking.hostName = "netcup";
       };
 
-    # THE OPERATOR'S USER-LEVEL ENVIRONMENT, as a SECOND role on the SAME
-    # Machine (design D1). It reuses this block's `target.host` and
-    # `target.sshOpts` — there is no second Machine declaration and no second
-    # SSH identity — and devenv's activation driver drops root to `home.username`
-    # at activation time. The system role above activates FIRST, so a system
-    # failure is never masked by a user-environment failure.
+    # THE home-manager ROLE IS GONE (ticket 08, D48). It carried exactly
+    # `devenv`, `gh`, `hermes-agent` and `herdr` for the `hbohlen` account, plus
+    # `~/projects`. Each of those is now shell-layer or prerequisite work:
     #
-    # The home-manager backing input is declared in devenv.yaml; this role
-    # content lives beside its justification in ./hosts/netcup/operator.nix
-    # (the ./tailnet.nix / ./self-deploy.nix pattern, design D3).
-    home-manager = import ./hosts/netcup/operator.nix;
+    #   * `gh`, `hermes-agent` and `herdr` are declared in ./modules/ (tooling,
+    #     agents) and arrive when the shell is entered — the D9/D20 rule that
+    #     the shell is authoritative inside the project.
+    #   * `devenv` itself is the shell runner's prerequisite, and on the host it
+    #     is this repo's `bin/devenv` + `.devenv-toolchain` built with `nix`,
+    #     not a package a role installs (bin/devenv's header).
+    #   * `~/projects` was an operator convenience, not a machine property.
+    #
+    # Removing the role also removes the input it needed (devenv.yaml) and the
+    # no-rollback hazard hosts/netcup/operator.nix documented: with the role
+    # gone, a failed activation cannot leave a half-written user environment
+    # behind. The Machine keeps the irreducible six — target.host, the nixos
+    # role, disko, install.*, deploy.healthCheck, deploy.rollbackTimeout — and
+    # nothing else.
   };
 }
