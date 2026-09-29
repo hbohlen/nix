@@ -25,6 +25,7 @@ lands, `devenv test` is the check and `modules/*.nix` is the source of truth).
 
     # 1. eval: does it build, and what system path does it produce?
     SECRETSPEC_REASON="iterate: eval" \
+      SECRETSPEC_PROVIDER=dev SECRETSPEC_PROFILE=default \
       OP_SERVICE_ACCOUNT_TOKEN=$(cat ~/.config/op-sa-token) \
       ./bin/devenv eval machines.netcup.build.nixos --no-tui
 
@@ -41,6 +42,7 @@ lands, `devenv test` is the check and `modules/*.nix` is the source of truth).
     # 4. deploy, then read the running system back
     export NIX_SSHOPTS="-i /home/hbohlen/.ssh/id_ed25519-op-dev -o IdentitiesOnly=yes"
     export SECRETSPEC_REASON="self-deploy on the host: deploying its own declaration over the loopback"
+    export SECRETSPEC_PROVIDER=dev SECRETSPEC_PROFILE=default
     ./bin/devenv machines deploy netcup \
       -O machines.netcup.target.host:string root@localhost --no-tui --yes
     ./bin/devenv machines status netcup \
@@ -67,6 +69,12 @@ of its own, so the environment variable is the only route. Without it the call
 dies with a reason error that reads like a machine error. Measured
 2026-09-28: the push step above failed for exactly this reason until the reason
 was added.
+
+The SHELL does not resolve the profile at all (D45, ticket 07): `secretspec.enable`
+is false, so `devenv shell` / `devenv test` enter on the four D3 prerequisites
+alone, with neither the token nor the reason. Only the `machines` and `eval`
+steps opt in, with `SECRETSPEC_PROVIDER`/`SECRETSPEC_PROFILE`; that opt-in is
+what resolves `install.secrets` locally.
 
 **The sudo boundary does not separate `hbohlen` from these secrets.** The key
 and the token sit in that user's home at 0600; anything running as `hbohlen`

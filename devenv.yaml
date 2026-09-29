@@ -2,25 +2,25 @@
 #
 # Inputs and SecretSpec configuration for the netcup build.
 #
-# SECRETSPEC IS IN THE TREE NOW (2026-09-27), so THE VAULT IS ON THE `machines`
-# PATH. Every `devenv machines` invocation — read-only `info` included —
-# resolves the whole secretspec profile when a manifest is present (the previous
-# build measured `machines info` refusing to run until all six of its declared
-# secrets resolved; re-measured here). The install milestone deliberately kept
-# the manifest out of the tree to keep the vault off the install path. The
-# tailnet change puts ONE secret on that path and accepts the coupling, because
-# `install.secrets` is the only mechanism that makes the enrollment a property
-# of the machine rather than of an operator's session.
+# THE SHELL DOES NOT RESOLVE SECRETSPEC; THE MACHINE PATH DOES (ticket 07, D45,
+# 2026-09-29). `secretspec.enable` is FALSE on purpose. D3 says the shell layer
+# must run with only the four prerequisites and nothing else; with the
+# integration on, `devenv shell`/`test` resolved the profile at activation and
+# died at the 1Password gate without a vault credential (measured: "OnePassword
+# authentication required"). With it off, a TOKENLESS `devenv test` is green,
+# and no shell tool needs a manifest secret. The vault is a MACHINE concern:
+# `install.secrets` puts the tailnet auth key on the host during
+# `machines install`, and the machines commands carry their own SecretSpec
+# options, so provider and profile are selected PER INVOCATION:
 #
-# The `secretspec` block below is what makes LOCAL execution work: devenv
-# resolves the value on this workstation and streams it to the target over
-# authenticated SSH. Target execution would instead require the 1Password
-# provider to be reachable from the temporary kexec'd installer — a
-# service-account token on a throwaway host, for no benefit here.
+#   SECRETSPEC_PROVIDER=dev SECRETSPEC_PROFILE=default ./bin/devenv machines …
 #
-# `provider` and `profile` are ALIASES matching the [providers.*] and
-# [profiles.*] entries in secretspec.toml, not URIs. Rename one without the
-# other and every `machines` command fails.
+# (`--secretspec-provider/--secretspec-profile` are equivalent; README.md's
+# deploy loop uses the env form.) `provider` and `profile` are ALIASES matching
+# the [providers.*] and [profiles.*] entries in secretspec.toml, not URIs.
+# Local resolution is what streams the value to the target over authenticated
+# SSH; target execution would instead need the 1Password provider reachable from
+# the temporary kexec'd installer, a service-account token on a throwaway host.
 #
 # ADD INPUTS BY HAND. `devenv inputs add` rewrites this file and drops every
 # comment in it (measured 2026-09-27).
@@ -60,10 +60,10 @@ shell: nu
 # boundary.
 require_version: true
 
+# OFF, so the shell enters without the vault (D45). The machines commands turn
+# it on for themselves with the env vars documented above.
 secretspec:
-  enable: true
-  provider: dev
-  profile: default
+  enable: false
 
 inputs:
   nixpkgs:

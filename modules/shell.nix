@@ -41,19 +41,18 @@ in
     # fifteen scripts are deleted (D33), so the export lives somewhere panes DO
     # inherit: the activation environment.
     #
-    # WHY THE FILE AND NOT SECRETSPEC: the shell resolves its secrets THROUGH
-    # `secretspec`, and `secretspec`'s 1Password provider calls `op`, which is
-    # what needs this token. Declaring the token as a secretspec secret would be
-    # circular.
+    # WHY THE FILE AND NOT SECRETSPEC: declaring this token as a secretspec
+    # secret would be circular — secretspec's 1Password provider calls `op`,
+    # which is what needs the token.
     #
-    # MEASURED BOOTSTRAP LIMIT — THIS LINE CANNOT MAKE THE FIRST ACTIVATION
-    # WORK. `enterShell` runs AFTER devenv has already resolved secretspec, so
-    # an activation that starts with no token in the environment still fails at
-    # the provider gate before this code is reached (measured 2026-09-28 in a
-    # fresh pane: "OnePassword authentication required ... set
-    # OP_SERVICE_ACCOUNT_TOKEN"). The bootstrap therefore lives in the SHELL RC,
-    # before the hook; this export is what carries the token into panes spawned
-    # from an already-activated shell.
+    # D45 (ticket 07, 2026-09-29) REMOVED THE BOOTSTRAP REQUIREMENT. While
+    # `secretspec.enable` was true, activation resolved the profile BEFORE
+    # `enterShell` ran, so a tokenless activation died at the provider gate
+    # (measured 2026-09-28: "OnePassword authentication required ... set
+    # OP_SERVICE_ACCOUNT_TOKEN") and the token had to come from the shell rc.
+    # The integration is now OFF, a tokenless `devenv test` is green, and this
+    # export is a CONVENIENCE: panes spawned from an activated shell can run
+    # `secretspec run` or `devenv machines` without re-reading the file.
     if [ -z "''${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && [ -r "$HOME/.config/op-sa-token" ]; then
       export OP_SERVICE_ACCOUNT_TOKEN="$(cat "$HOME/.config/op-sa-token")"
     fi
