@@ -1,0 +1,27 @@
+ui-onboarding:
+  welcomeNoticeVersion: 2026-08-13.1
+llm-pi-ai:
+  providers:
+    deepseek:
+      apiKeyEnv: DEEPSEEK_API_KEY
+      models:
+        - id: deepseek-v4-flash
+    longcat:
+      displayName: LongCat
+      apiKeyEnv: LONGCAT_API_KEY
+      api: openai-completions
+      baseURL: https://api.longcat.chat/openai/v1
+      models:
+        - id: LongCat-2.0
+          name: LongCat-2.0
+          contextWindow: 1048576
+          maxTokens: 131072
+agent-default-model:
+  provider: longcat
+  model: LongCat-2.0
+ui-conversation:
+  busyEnter: steer
+agent-presets:
+  default: standard
+ui-chat:
+  transcriptView: normal

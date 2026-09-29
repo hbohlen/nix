@@ -34,5 +34,10 @@ in
     llm.agent-browser # named by the user (D27)
     llm.parallel-cli # named by the user (D27)
     llm.luvus # named by the user, wired to nothing yet (D27)
+    # llm.dsh IS the declared dsh package, and it is consumed in
+    # modules/dsh.nix — not listed here, because its bundled Node makes its
+    # own bin unbootable (measured 2026-09-29) and a broken `dsh` on PATH
+    # would shadow the working one. That module exports a working `dsh`
+    # from the same package under a pinned upstream Node.
   ];
 }

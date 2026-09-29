@@ -1,0 +1,7 @@
+- insert:
+    - id: remote-settings
+      name: '@deepseek-ai/cordis-plugin-group'
+      group: true
+      config:
+        - id: remote-settings-runtime
+          name: '@hbohlen/remote-settings'

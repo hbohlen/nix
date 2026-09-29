@@ -1,0 +1,144 @@
+# nix — netcup host and workstation shell
+
+One devenv root project with two halves: **netcup**, a NixOS guest declared and
+deployed as a devenv Machine, and the **shell layer** the operator and agents
+work inside on the workstation. This file is the glossary. It says what each
+term means here and which decision settled it. D-numbers point into
+`.scratch/devenv-layering/map.md`.
+
+## Language
+
+### Layering
+
+**Machine layer**:
+The six items a Machine declaration cannot shed: `target.host`, the `nixos`
+role, the `disko` input, the `install.*` block, `deploy.healthCheck`,
+`deploy.rollbackTimeout`. Everything else belongs to the shell layer. (D8, D17)
+_Avoid_: irreducible six, server side, host config
+
+**Shell layer**:
+Everything this repo's devenv config declares. It is active while the project
+is entered and gone when it exits. (D1, D2)
+_Avoid_: dev env, the profile
+
+**The four**:
+`secretspec`, `nix`, `devenv`, `tailscale` — the only things a non-NixOS
+machine needs before the shell layer can run. (D3, D17)
+_Avoid_: prerequisites list, bootstrap set
+
+**Portability test**:
+A tool stays in the shell layer only if the layer still runs on a non-NixOS
+machine given only the four. Anything that fails the test belongs in the
+machine layer or nowhere. (D3)
+_Avoid_: D3 test
+
+**Placement table**:
+The survey naming where every tool lives: Shell, Prerequisite, Dropped, or out
+of scope. Its universe is closed — a tool earns a row only by the D18 rule.
+(D18)
+
+### Tool placement
+
+**Durable copy**:
+The native, self-managed install of a self-updating CLI. It stays on disk next
+to the shell's declaration, because it is what survives a broken shell. (D9,
+D20)
+_Avoid_: workstation durable (D1 named this a third layer; D12 and D20
+absorbed it per tool)
+
+**Shell shadow**:
+The declared copy of a tool that also has a durable copy. Inside the project,
+the shadow is authoritative. (D9, D20)
+_Avoid_: duplicate, override
+
+**Trap**:
+An unmanaged copy on PATH that hijacks the declared one. The nix profile's
+nushell 0.113.1 beating the declared 0.115.1 was the worked case. (D6, D40)
+_Avoid_: stale binary
+
+**The wrapper**:
+`bin/devenv` in this repo, pinned to 2.4.0, which is the only version with
+`machines`. On the workstation, bare `devenv` is the profile's 2.2.2 and is
+always wrong inside this project. On netcup both names are 2.4.0. (D6)
+_Avoid_: pinned devenv
+
+**Source rule**:
+Per tool, not per class: agent CLIs come from the pinned `llm-agents` input,
+everything else from the locked nixpkgs, and `openspec` is the named exception
+that comes from nixpkgs. (D25, D30)
+
+### Install and deploy
+
+**Install**:
+First provisioning of netcup: `devenv machines install` images the host,
+partitions with disko, and enrolls the tailnet on first boot.
+_Avoid_: setup, bootstrap (bootstrap is reserved for the token file, below)
+
+**Deploy**:
+Every later update of netcup: `devenv machines deploy`, with health check and
+magic rollback. (D8)
+
+**Promotion**:
+A shell-scoped prototype moving into netcup's machine layer, as part of the
+deploy. Caddy is the current candidate. (D15)
+_Avoid_: migrate, graduate
+
+**Successor**:
+The shell's copy of a definition the machine still serves. The shell
+Caddyfile is the successor of `/etc/caddy/Caddyfile`; the machine copy retires
+at promotion. (D24)
+_Avoid_: replacement, takeover
+
+### Shell identity
+
+**Login shell**:
+zsh, on the workstation. It sources `/etc/profile` and the nix profile
+scripts. Nu never becomes this. (D26)
+
+**Project shell**:
+nu, inside the devenv shell — interactive, and the shell every new pane
+spawns. Scripts and devenv tasks stay bash. (D26, D29)
+_Avoid_: interactive shell vs agent shell (there is one project shell; both
+use it)
+
+### Ingress
+
+**Ingress**:
+Caddy with a Cloudflare DNS-01 certificate, bound to the tailnet address,
+serving `hermes.hbohlen.space` and `hermes-gateway.hbohlen.space`. The only
+domain is `hbohlen.space`, under the wildcard that already resolves here.
+(D11, D16, D32)
+_Avoid_: reverse proxy (use it only for the Caddy process itself), tunnel
+
+### Secrets
+
+**Token file**:
+`~/.config/op-sa-token`, the source of `OP_SERVICE_ACCOUNT_TOKEN`. The shell
+rc exports it before the hook (the bootstrap), and the activation environment
+carries it into panes. It must not flow through `secretspec` — `secretspec`'s
+1Password provider is what needs it, so that route is circular. (D36, D39)
+_Avoid_: op token, SA token
+
+### Docs and process
+
+**Runbook**:
+An operator-facing doc in `docs/`. Every claim in one is true against the tree
+now, never aspirational. (D10)
+
+**Research report**:
+Dated evidence with verbatim upstream quotes, in `docs/research/`. (D10)
+_Avoid_: notes, findings doc
+
+**Doc rule**:
+Edit a doc when a claim in it is false against the tree. Delete it only when
+its subject is finished. Leave it when it records a decision still in force.
+(ticket 04, D41)
+
+**Map**:
+The wayfinder chart at `.scratch/devenv-layering/map.md`. It holds decisions,
+not deliverables, and is untracked on purpose. (D41 records the one hand edit
+made to `docs/` outside it.)
+
+**D-number**:
+One settled decision, listed under "Decisions so far" in the map. Cited
+everywhere else by it.

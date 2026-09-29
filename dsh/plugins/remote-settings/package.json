@@ -1,0 +1,19 @@
+{
+  "name": "@hbohlen/remote-settings",
+  "version": "0.1.0",
+  "description": "Lets the dsh Web UI settings (Models/providers) work when the page is served from a non-loopback origin (reverse proxy / tailnet / LAN)",
+  "type": "module",
+  "main": "lib/index.js",
+  "files": [
+    "lib/index.js",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-host-webserver": ">=0.1.0-rc.6 <0.2.0"
+  }
+}
