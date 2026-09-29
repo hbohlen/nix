@@ -1,7 +1,7 @@
 # dsh Web endpoint — `dsh.hbohlen.space`
 
 The DeepSeek Harness Web UI for this workstation, served to **tailnet clients
-only**. `dsh` itself listens on `127.0.0.1:3080`; two Caddy sites front it. This
+only**. `dsh` itself listens on `127.0.0.1:3080`, behind Caddy on tailnet `:443`. This
 file is the runbook and the record of the decisions behind the shape.
 
 Measured and verified 2026-09-29 on `contabo` (the operator workstation, tailnet
@@ -9,43 +9,47 @@ Measured and verified 2026-09-29 on `contabo` (the operator workstation, tailnet
 
 ## The decision: which Caddy serves the name
 
-**End state — the shell ingress owns it.** `modules/ingress.nix` (wayfinder
-ticket 06) declares the site, per D24: the shell's Caddyfile is the successor of
-`/etc/caddy/Caddyfile` and the site moves to 443 when the ingress is promoted to
-netcup's machine layer (ADR 0002, D8).
+The system Caddy currently owns the hostname's `:443` route. `modules/dsh.nix`
+declares the loopback-only upstream process. At ingress promotion (ADR 0002,
+D8), move the site into the machine layer and retire the workstation Caddy route.
 
-**Interim port answer — 9445.** The system `caddy.service` owns
-`100.115.197.61:443` and is NOT in this repository, so the repo-declared site
-binds a high port on the tailnet address (D21 coexistence). The port-less URL
-stays on the system caddy's `*.hbohlen.space` site until promotion. That is the
-recorded interim; the repository declares `:9445` and does not claim the other.
+**The operator URL is port-less.** The system `caddy.service` owns
+`100.115.197.61:443`; its `dsh.hbohlen.space` route reverse-proxies to the
+devenv-managed dsh process on `127.0.0.1:3080`. The hostname resolves to the
+machine's Tailscale IP, and both Caddy and dsh bind only to loopback/tailnet
+addresses. The bare `https://dsh.hbohlen.space/` is the phone-friendly entry
+point: system Caddy sends only a tokenless root request to a loopback redirector,
+which reads the current mode-0600 launch URL and redirects through dsh's normal
+token exchange. dsh then sets its authority-bound session cookie. Paths, API
+requests, requests already carrying a token, and root requests with a dsh
+session cookie continue directly to dsh. The cookie check prevents dsh's own
+post-exchange redirect to `/` from looping back through the redirector. All
+tailnet devices can use this entry point; tailnet membership is the outer access
+boundary, as requested.
 
 | URL | Served by | In this repo |
 |---|---|---|
-| `https://dsh.hbohlen.space` | system caddy, `*.hbohlen.space` site | no — interim |
-| `https://dsh.hbohlen.space:9445` | shell ingress, `dsh.hbohlen.space:9445` site | yes |
+| `https://dsh.hbohlen.space` | system Caddy on tailnet `:443` → redirector for `/`, dsh otherwise | Caddy system config; dsh process is in this repo |
 
-**`dsh-dev.hbohlen.space` — explicit fate: left on the system caddy.** It serves
-the `~/projects/deepseek-harness` dev checkout on `127.0.0.1:3081` with its own
-profile, launched by hand. It is not declared here, and this change does not
-touch it.
+The old `dsh-dev.hbohlen.space` service and source checkout have been removed.
 
-**Why the port is in the URL, and why the cookie cares.** dsh's session cookie
+**Why the exact authority matters.** dsh's session cookie
 is authority-bound: the normalized `hostname:port` appears in the cookie name
 and in its signed payload. A cookie minted at `dsh.hbohlen.space` is refused at
-`dsh.hbohlen.space:9445` and the reverse (measured: both directions return 401 on
-`/api`). So the operator must use the URL whose authority they minted, and the
-`--trusted-host` set must contain the authority they type. The declared process
-carries the port-less entry, which the fence matches on any port (measured in
-`api-request-trust.ts`: a port-less entry compares hostnames only).
+another port (measured: both directions returned 401 on `/api`). Use the same
+hostname and port for token exchange and later requests. The declared process
+includes `dsh.hbohlen.space` in `--trusted-host`; a port-less entry matches that
+hostname on any port (measured in `api-request-trust.ts`).
 
 ## What is declared, and where
 
 | Concern | Where |
 |---|---|
-| Ingress site | `modules/ingress.nix` (`https://dsh.hbohlen.space:9445`) |
+| Browser-facing ingress | System Caddy's `dsh.hbohlen.space` route on tailnet `:443` |
 | dsh program | `modules/dsh.nix` — the pinned `llm.dsh`, under a pinned upstream Node |
 | dsh Web process | `modules/dsh.nix` (`processes.dsh-web`) |
+| Phone entry redirector | `dsh/phone-entry.py`, loopback `127.0.0.1:3082`, managed by devenv |
+| System Caddy route | `/etc/caddy/Caddyfile` on contabo (outside this repo); routes tokenless root requests without a dsh cookie to `127.0.0.1:3082` |
 | Declared home seed | `modules/dsh.nix` + `dsh/` (settings, profile overlay, plugin) |
 | Plugin source of truth | `dsh/plugins/remote-settings/` |
 | Launch flow and smoke test | `modules/dsh.nix` (`tasks."dsh:open"`, `tasks."dsh:smoke"`) |
@@ -54,54 +58,81 @@ carries the port-less entry, which the fence matches on any port (measured in
 ## Operate
 
 ```console
-# 1. Start the declared instance (loopback only)
-devenv up dsh-web
+# 1. Start the declared process set, including dsh and the phone redirector.
+devenv up -d
 
-# 2. Get a FRESH launch URL through the domain. A stored URL is never a
-#    fallback: the token dies with its process.
+# 2. Optional: print a fresh token URL for desktop troubleshooting.
 devenv tasks run dsh:open
-#    -> https://dsh.hbohlen.space:9445/?token=<43 chars>
+#    -> https://dsh.hbohlen.space/?token=<43 chars>
 
-# 3. Open that URL in a tailnet browser. The token exchange sets the
-#    authority-bound cookie; the page then carries the settings shim.
+# 3. On a phone, bookmark https://dsh.hbohlen.space/ and open it directly.
+#    The redirector forwards the current token to dsh for its normal exchange.
 
 # 4. The whole chain, asserted
 devenv tasks run dsh:smoke
 ```
 
 `dsh:smoke` asserts, in order: the process listens on `127.0.0.1:3080` and
-nowhere else; the site answers on `100.115.197.61:9445`; a fresh token exchanges
-through the domain (`303` + cookie); the served page carries the
+nowhere else; the redirector listens on `127.0.0.1:3082`; the site answers on
+`100.115.197.61:443`; a tokenless domain visit redirects to the current process
+token without exposing it in task output; that token exchanges through the
+domain (`303` + cookie); the served page carries the
 `dsh-remote-settings-shim`; `/api` refuses a cookieless caller (`401`) and
 accepts the domain cookie — which is the proof that the authority reaching dsh is
 the one the cookie was minted for.
 
-## The handover from the hand-launched instance (operator step)
+## Start the declared instance
 
-Measured 2026-09-29: `127.0.0.1:3080` is held by a `systemctl --user` unit
-(`dsh-web.service`) running the mise npm copy of dsh **0.1.5-rc.1** from
-`~/.dsh`. Nothing in the repository declared it. The declared instance cannot
-bind 3080 while it runs.
+The dsh Web process and its runtime home are managed by devenv. Start the
+declared process set from the repository root:
 
 ```console
-systemctl --user disable --now dsh-web     # revert: systemctl --user enable --now dsh-web
-devenv up dsh-web
+devenv up -d
 ```
 
-**The declared home needs credentials first.** `~/.dsh-web` starts empty of
+The system Caddy route also requires the devenv-managed `dsh-phone-entry`
+process. While that process is down, the route cannot redirect phone entry.
+
+If a phone still shows the authentication-required message after the route
+starts working, clear that browser's site cookies for `dsh.hbohlen.space` and
+open the bare domain again. A stale cookie can prevent a new token exchange.
+
+The system Caddy `dsh` matcher is intentionally ordered with a more-specific
+entry matcher first:
+
+```caddyfile
+@dshEntry {
+    host dsh.hbohlen.space
+    path /
+    not query token=*
+    not header_regexp Cookie dsh-auth-
+}
+handle @dshEntry {
+    reverse_proxy 127.0.0.1:3082
+}
+@dsh host dsh.hbohlen.space
+handle @dsh {
+    reverse_proxy 127.0.0.1:3080
+}
+```
+
+The redirect is an authentication bootstrap, not a second login: each tailnet
+device gets the same dsh token exchange and its own browser cookie. The token
+exists in a `Location` header during that exchange, so do not enable Caddy
+access logs that record response headers or expose redirect locations. The
+redirector suppresses its own request logging and binds only to loopback.
+
+**The declared home needs credentials first.** `~/nix/dsh/.dsh` starts empty of
 model credentials, so Models lists no provider until the operator provisions
 them (`0600`, never committed, never in the store):
 
 ```console
-install -d -m 0700 ~/.dsh-web
-install -m 0600 /dev/null ~/.dsh-web/.env     # then fill in LONGCAT_API_KEY, DEEPSEEK_API_KEY
+install -d -m 0700 ~/nix/dsh/.dsh
+install -m 0600 /dev/null ~/nix/dsh/.dsh/.env # then fill in LONGCAT_API_KEY, DEEPSEEK_API_KEY
 ```
 
-That is deliberate and is the reason this handover is not automated: pointing the
-declared process at `~/.dsh` instead would migrate the operator's live 0.1.5 home
-one way (0.1.7 imports `settings.yaml` and renames it `.imported`) and would put a
-second live process on a home the dev checkout already shares — the failure
-upstream documents as silently pruning workspace session membership.
+The devenv-managed instance uses its own `dsh/.dsh`, separate from any other
+running dsh process to avoid the shared-home corruption documented upstream.
 
 ## The Node blocker, recorded
 
@@ -126,9 +157,8 @@ when the bundled Node stops failing the probe.
 
 ## Not verified in this change
 
-- **The handover itself** (step above) — it needs the operator's credentials, and
-  it stops a service the operator is using. The declared instance was verified on
-  a spare port (`3082`) instead: same entry point, same home seed, same flags.
+- **The model provider credentials.** The declared home is isolated and must be
+  provisioned as described above before model-backed requests can succeed.
 - **Off-tailnet unreachability from a second vantage.** The record is DNS-only
   (not proxied) and points at `100.115.197.61`, an address in `100.64.0.0/10`
   that is not routable from the public internet; the site binds that address

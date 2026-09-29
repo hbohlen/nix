@@ -2,7 +2,7 @@
 #
 # WHY THIS FILE EXISTS. Measured 2026-09-29: the dsh Web UI on 127.0.0.1:3080
 # was a hand-launched `systemctl --user` unit running a mise-installed dsh
-# 0.1.5-rc.1, with the settings fix living only in `~/.dsh/plugins`. Nothing in
+# 0.1.5-rc.1, with the settings fix living only in a user-local plugin. Nothing in
 # this repository declared any of it, so "the domain works" depended on files
 # nobody could reproduce from the tree. This module makes the chain a property
 # of the tree: the binary (from the pinned `llm-agents` input), the profile and
@@ -10,7 +10,7 @@
 #
 # WHAT THE UPSTREAM SERVES (decided, not guessed — see docs/dsh-web-endpoint.md):
 #   dsh.hbohlen.space  -> 127.0.0.1:3080  (this process)
-#   the site block is in ./ingress.nix, on the tailnet IP, port 9445.
+#   the system Caddy serves the port-less hostname on tailnet :443.
 #
 # THREE MEASURED FACTS THAT SHAPE EVERY LINE BELOW. All from the research card
 # (docs/research/dsh-web-remote-access.md in this repo):
@@ -23,10 +23,9 @@
 #   2. A PORT-LESS `--trusted-host` ENTRY MATCHES ANY PORT. Read in the pinned
 #      source, `packages/client/connection/src/api-request-trust.ts`
 #      (`isTrustedAuthority`): an entry without a port compares hostnames only.
-#      That is why `dsh.hbohlen.space` alone covers both the port-less site on
-#      the system caddy (443) and this repo's `:9445` site. Measured: a request
-#      with `Host: dsh.hbohlen.space:9445` passes the fence (404 from the RPC
-#      bridge), one with an undeclared authority gets 403.
+#      That is why `dsh.hbohlen.space` covers the port-less system Caddy site.
+#      A port-less entry compares hostnames only; the Caddy reverse proxy keeps
+#      the browser's domain authority unchanged.
 #   3. THE LAUNCH TOKEN IS PER-PROCESS AND DIES WITH IT. The stored-token 401
 #      every operator hit was a capture race in the old
 #      `~/.local/bin/dsh-web-capture-url`, which grepped the last 8 journal
@@ -34,12 +33,11 @@
 #      shared log: the start script captures its OWN child's stdout, so the
 #      file it writes cannot hold another process's token.
 #
-# DSH_HOME IS NOT `~/.dsh`. Two live instances must not share one home
-# (upstream: workspace-session pruning and JSONL append corruption). `~/.dsh` is
-# the hand-installed home the dev checkout on 3081 also uses; this instance gets
-# `~/.dsh-web` and never touches the other. The home is OUTSIDE the repository on
-# purpose: runtime state (sessions, storages, credentials) must not enter the
-# tree, and a home inside it would need a .gitignore entry per new subdirectory.
+# DSH_HOME is `dsh/.dsh` inside this repository, selected by devenv. A separate
+# home keeps this process isolated from other concurrently running dsh processes
+# (upstream: workspace-session pruning and JSONL append corruption). The ignored
+# directory keeps runtime state under the dsh boundary without tracking sessions,
+# launch tokens, or credentials.
 #
 # WHAT THE OPERATOR STILL OWNS. `dsh` resolves model credentials from the
 # environment or `$DSH_HOME/.env`, never from this file. The declared home
@@ -98,12 +96,11 @@ let
   # THE PLUGIN, FROM THE TREE. It makes the Settings/Models page usable from a
   # non-loopback origin by injecting a pre-boot `ownsHost` shim into the served
   # index.html (the client's settings scope is client-side, so `--trusted-host`
-  # alone is not enough). Copied here from `~/.dsh/plugins/remote-settings`,
-  # which is where it lived as the only copy.
+  # alone is not enough). The plugin source is tracked under ./dsh.
   plugin = ../dsh/plugins/remote-settings;
 
-  # THE PROFILE OVERLAY. Same shape as the live `~/.dsh/profiles/web/package.json`
-  # minus two things: the operator's extra tool packages (`@deepseek-ai/dsh-tools`,
+  # THE PROFILE OVERLAY. Same shape as the measured live web profile, minus two
+  # things: extra tool packages (`@deepseek-ai/dsh-tools`,
   # `dshmarket`), which need a pnpm install and a lockfile this module does not
   # own, and the lockfile itself. `@deepseek-ai/dsh-base` and
   # `@deepseek-ai/dsh-web-app` are NOT dependencies — they ship with dsh and
@@ -170,9 +167,9 @@ let
   '';
 
   # THE PROCESS. `--trusted-host` carries the authority the operator types; the
-  # port-less entry covers every port (fact 2 above). The tailnet and 8443 rows
-  # are kept from the hand-launched unit so an operator who already uses
-  # `contabo.worm-hue.ts.net` keeps working.
+  # port-less entry matches the browser-facing domain. The tailnet hostname
+  # entries are kept from the hand-launched unit so existing tailnet access keeps
+  # working.
   #
   # THE STDOUT CAPTURE IS THE LAUNCH FLOW'S ONLY SOURCE. dsh prints the token URL
   # once at startup and never writes it to disk; `awk` tees it to
@@ -182,7 +179,7 @@ let
   startDsh = pkgs.writeShellScript "dsh-web-declared" ''
     set -euo pipefail
 
-    export DSH_HOME="''${DSH_HOME:-$HOME/.dsh-web}"
+    export DSH_HOME="''${DSH_HOME:-$PWD/dsh/.dsh}"
     url_file="$DSH_HOME/launch.url"
 
     ${seedHome}
@@ -219,6 +216,17 @@ in
     exec = "${startDsh}";
   };
 
+  # System Caddy sends only bare GET / requests to this local redirector. It
+  # reads dsh's mode-0600 current launch URL and redirects the phone to the
+  # normal token exchange. It does not log requests or expose a listener beyond
+  # loopback; tailnet reachability remains controlled by system Caddy's bind.
+  processes.dsh-phone-entry = {
+    exec = ''
+      exec ${pkgs.python3}/bin/python3 ${../dsh/phone-entry.py} \
+        "''${DSH_HOME:-$PWD/dsh/.dsh}/launch.url"
+    '';
+  };
+
   # THE LAUNCH FLOW (ticket item 4). A stored URL is never a fallback: the token
   # dies with its process, so this task reads the CURRENT process's own capture
   # and proves the token still exchanges before printing a domain URL.
@@ -226,7 +234,7 @@ in
     exec = ''
       set -euo pipefail
 
-      url_file="''${DSH_HOME:-$HOME/.dsh-web}/launch.url"
+      url_file="''${DSH_HOME:-$PWD/dsh/.dsh}/launch.url"
       if [ ! -r "$url_file" ]; then
         echo "dsh:open: no launch URL captured yet — start the instance first:"
         echo "  devenv up dsh-web"
@@ -242,7 +250,7 @@ in
       # Prove the token is live against the loopback listener with the authority
       # the browser will use. 303 is the only accepted exchange shape.
       code="$(${pkgs.curl}/bin/curl -s -o /dev/null -w '%{http_code}' \
-        -H 'Host: dsh.hbohlen.space:9445' \
+        -H 'Host: dsh.hbohlen.space' \
         "http://127.0.0.1:3080/?token=$token" || true)"
       if [ "$code" != "303" ]; then
         echo "dsh:open: the captured token no longer exchanges (HTTP $code)."
@@ -251,9 +259,7 @@ in
         exit 1
       fi
 
-      echo "https://dsh.hbohlen.space:9445/?token=$token"
-      echo "(the port-less https://dsh.hbohlen.space is the system caddy's interim path;"
-      echo " its cookie is a different authority and does not carry over)"
+      echo "https://dsh.hbohlen.space/?token=$token"
     '';
   };
 
@@ -267,21 +273,24 @@ in
       # The site under test, pinned to the tailnet address rather than left to
       # the local resolver: the point is the binding, and a cached A record must
       # not be able to turn a red chain green.
-      site="https://dsh.hbohlen.space:9445"
-      resolve="--resolve dsh.hbohlen.space:9445:100.115.197.61"
-      url_file="''${DSH_HOME:-$HOME/.dsh-web}/launch.url"
+      site="https://dsh.hbohlen.space"
+      resolve="--resolve dsh.hbohlen.space:443:100.115.197.61"
+      url_file="''${DSH_HOME:-$PWD/dsh/.dsh}/launch.url"
 
       # 1. the process is up and loopback-only
       ${pkgs.iproute2}/bin/ss -tln | grep -q '127.0.0.1:3080' || {
         echo "dsh:smoke: nothing listening on 127.0.0.1:3080"; exit 1;
       }
+      ${pkgs.iproute2}/bin/ss -tln | grep -q '127.0.0.1:3082' || {
+        echo "dsh:smoke: phone-entry redirector is not listening on 127.0.0.1:3082"; exit 1;
+      }
       ${pkgs.iproute2}/bin/ss -tln | grep -q '0.0.0.0:3080' && {
         echo "dsh:smoke: dsh is listening on a non-loopback address"; exit 1;
       }
 
-      # 2. the ingress site is bound on the tailnet address (modules/ingress.nix)
-      ${pkgs.iproute2}/bin/ss -tln | grep -q '100.115.197.61:9445' || {
-        echo "dsh:smoke: the ingress site is not bound on 100.115.197.61:9445"; exit 1;
+      # 2. the HTTPS site is bound on the tailnet address by system Caddy.
+      ${pkgs.iproute2}/bin/ss -tln | grep -q '100.115.197.61:443' || {
+        echo "dsh:smoke: Caddy is not bound on 100.115.197.61:443"; exit 1;
       }
 
       # 3. a fresh launch URL mints a cookie for the DOMAIN authority, and the
@@ -290,6 +299,14 @@ in
       #    source, and no journal grep.
       token="$(sed -n 's#.*token=\([A-Za-z0-9_-]*\)$#\1#p' "$url_file" | tail -1)"
       test -n "$token" || { echo "dsh:smoke: no launch token captured yet"; exit 1; }
+
+      # 3. a phone entering through the stable bare domain is redirected to
+      #    the current process token without exposing that token in task output.
+      entry_location="$(${pkgs.curl}/bin/curl -s -o /dev/null -w '%{redirect_url}' \
+        $resolve "$site/")"
+      test "$entry_location" = "$site/?token=$token" || {
+        echo "dsh:smoke: bare domain did not redirect to the current dsh launch URL"; exit 1;
+      }
 
       jar="$(mktemp)"
       trap 'rm -f "$jar"' EXIT

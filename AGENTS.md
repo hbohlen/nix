@@ -2,7 +2,10 @@
 
 ### Issue tracker
 
-Issues are cards on the Hermes Kanban board (`hermes kanban`, default board DB `~/.hermes/kanban.db`). See `docs/agents/issue-tracker.md`.
+Issues are cards on the Hermes Kanban board (`hermes kanban`); this repo's board
+is `nixos` (`~/.hermes/kanban/boards/nixos/kanban.db`), not the legacy
+`~/.hermes/kanban.db`. The untracked `.scratch/devenv-layering/` map is the
+design record, not the tracker. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

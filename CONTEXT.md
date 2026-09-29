@@ -110,6 +110,15 @@ domain is `hbohlen.space`, under the wildcard that already resolves here.
 (D11, D16, D32)
 _Avoid_: reverse proxy (use it only for the Caddy process itself), tunnel
 
+**dsh endpoint**:
+The one ingress site served PORT-LESS, because the dsh session cookie is bound
+to `hostname:port`: the system Caddy on tailnet `:443` answers
+`dsh.hbohlen.space`, sending tokenless root visits through the loopback
+redirector (`dsh/phone-entry.py`) to the current launch token and proxying
+everything else to `127.0.0.1:3080`. This repo declares the upstream and the
+redirector, not the system route; promotion to netcup moves both. (D42)
+_Avoid_: dsh site on a high port (the `:9445` shape was removed)
+
 ### Secrets
 
 **Token file**:

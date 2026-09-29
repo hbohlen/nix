@@ -42,9 +42,9 @@ persistence and the settings document store. Nothing else changes.
 ## Dev loop
 
 ```sh
-cd ~/.dsh/plugins/remote-settings
+cd ~/nix/dsh/plugins/remote-settings
 dsh plugin --profile web add .      # re-copy into the profile
-systemctl --user restart dsh-web    # code changes never hot-reload
+devenv processes restart dsh-web    # code changes never hot-reload
 ```
 
 Verify the shim is served:

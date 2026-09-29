@@ -1,8 +1,41 @@
 # Issue tracker: Hermes Kanban
 
-Issues, specs and tickets for this repo live as cards on a Hermes Kanban board (SQLite board; the `default` board's DB is `~/.hermes/kanban.db`). Drive it with `hermes kanban <verb>`, or with the `kanban_*` tools from inside an agent session.
+Issues, specs and tickets for this repo live as cards on a Hermes Kanban board.
+The active board for this repo is **`nixos`** (slug `nixos`, name "NixOS
+Rebuild"); its SQLite DB is `~/.hermes/kanban/boards/nixos/kanban.db`, and the
+active board slug is the contents of `~/.hermes/kanban/current`. A second board,
+`wiki`, exists for the Obsidian vault. Drive either with `hermes kanban <verb>`,
+or with the `kanban_*` tools from inside an agent session.
 
-The board is the tracker. Nothing about an issue lives in this repo — cards are not files, and there is no `.scratch/` convention here.
+`~/.hermes/kanban.db` (the old single-file `default` board) is legacy and no
+longer receives work — do not read it for this repo's state.
+
+## Board, and the one in-repo artifact
+
+The board is the tracker for **dispatchable work**: cards, claims, runs, and
+their conversation. They are not files, and creating one does not touch this
+repo.
+
+The one exception is `.scratch/devenv-layering/` — the untracked **wayfinder
+map** (`map.md`) and its ten ticket files (`issues/NN-*.md`). That map is the
+design/decision record for the shell-vs-machine layering effort, written as
+markdown because it predates and outlives any single card. Keep it in step with
+the board, but do not treat its `Status:` lines as the tracker: the board is
+where state changes are recorded.
+
+## If the CLI cannot write
+
+`hermes kanban` may fail to open a board on this workstation with:
+
+    kanban: could not initialize database: [Errno 30] Read-only file system:
+    '/home/hbohlen/.hermes/kanban/boards/nixos/kanban.db.init.lock'
+
+The board files live under the DSH file sandbox, which is workspace-write and
+denies the lock outside the session workspace. In that case read the board
+read-only with sqlite3 and report the state; do not "fix" the DB:
+
+    sqlite3 "file:$HOME/.hermes/kanban/boards/nixos/kanban.db?mode=ro" \
+      "SELECT id,title,status,assignee FROM tasks ORDER BY created_at;"
 
 ## Conventions
 

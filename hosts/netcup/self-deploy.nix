@@ -168,8 +168,8 @@
   # host nobody built by hand: where does this system come from? The repository
   # is public, so none of this is a secret, and nothing in it is a credential.
   #
-  # `branch` IS THE ONE PLACE THE LOOP'S BRANCH IS DECLARED. The scripts default
-  # to `main` in their environment, so this file and that default have to be
+  # `branch` IS THE ONE PLACE THE LOOP'S BRANCH IS DECLARED. The loop in
+  # README.md reads it back from here, so this file and that loop have to be
   # changed together — the failure mode of a fact that is written down twice.
   #
   # Measured 2026-09-28: this file is also task 7.4's real change — the
@@ -183,7 +183,7 @@
     checkout = "/home/hbohlen/nix";
     targetOverride = "machines.netcup.target.host:string root@localhost";
     loopbackKey = "/home/hbohlen/.ssh/id_ed25519-op-dev";
-    authored = "this host; it authors, pushes and deploys (scripts/self-deploy-drift.sh refuses an unpublished commit)";
+    authored = "this host; it authors, pushes and deploys (the loop's gate in README.md refuses an unpublished revision)";
   };
 
   # THE STORE MUST BE WRITABLE FOR THE HOST TO DO ANYTHING, AND AT BOOT IT IS

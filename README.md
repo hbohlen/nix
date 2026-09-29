@@ -1,11 +1,24 @@
-# netcup
+# nix — the netcup machine and the workstation shell
 
-One NixOS machine, declared in this repository and deployed **to itself** with
-[devenv machines](https://devenv.sh/machines/). The checkout lives on the
-machine at `/home/hbohlen/nix`, and everything — edit, eval, commit, push,
-deploy — happens there, as `hbohlen`.
+One devenv root with two halves. **netcup** is a NixOS guest declared here and
+deployed with [devenv machines](https://devenv.sh/machines/). The **shell layer**
+is everything this repo declares for the workstation you work from: agent CLIs,
+languages, nushell, and the prototype ingress. The glossary is `CONTEXT.md`; the
+decisions behind it are `docs/adr/`.
 
-## The loop
+The host deploy loop runs on the host itself. The checkout lives at
+`/home/hbohlen/nix`, and everything — edit, eval, commit, push, deploy — happens
+there, as `hbohlen`.
+
+## Operator daily path
+
+On the workstation, `cd ~/nix` activates the shell layer by itself (the zsh
+hook, `~/nix/bin/devenv` pinned to 2.4.0). Inside the project shell you get nu,
+the declared tools, and the ingress/dsh processes. The operator runbook for that
+path is `docs/shell.md` (being written under wayfinder ticket 10; until it
+lands, `devenv test` is the check and `modules/*.nix` is the source of truth).
+
+## The host deploy loop
 
     cd /home/hbohlen/nix
     <edit hosts/netcup/*.nix>
@@ -15,25 +28,29 @@ deploy — happens there, as `hbohlen`.
       OP_SERVICE_ACCOUNT_TOKEN=$(cat ~/.config/op-sa-token) \
       ./bin/devenv eval machines.netcup.build.nixos --no-tui
 
-    # 2. commit and push (the gate refuses an unpublished commit)
+    # 2. commit and push (the deploy gate refuses an unpublished revision)
     git add -A && git commit -m "<action> | <subject>"
     OP_SERVICE_ACCOUNT_TOKEN=$(cat ~/.config/op-sa-token) \
       SECRETSPEC_REASON="push: <what changed>" \
       secretspec run -- git push origin main
 
-    # 3. gate, then deploy
-    ./scripts/self-deploy-drift.sh      # must print NO DRIFT
-    bash scripts/self-deploy-run.sh     # build -> activate -> read the status back
+    # 3. gate: the checkout must hold the published revision, clean
+    git status --porcelain                       # must print nothing
+    test "$(git rev-parse HEAD)" = "$(git ls-remote origin refs/heads/main | cut -f1)"
 
-`self-deploy-run.sh` is the deploy: it exports `NIX_SSHOPTS`,
-`SECRETSPEC_REASON` and the token, proves the loopback login first, evaluates,
-deploys transactionally against `root@localhost`, then reads `machines status`
-back and checks that the running system is the one it asked for.
+    # 4. deploy, then read the running system back
+    export NIX_SSHOPTS="-i /home/hbohlen/.ssh/id_ed25519-op-dev -o IdentitiesOnly=yes"
+    export SECRETSPEC_REASON="self-deploy on the host: deploying its own declaration over the loopback"
+    ./bin/devenv machines deploy netcup \
+      -O machines.netcup.target.host:string root@localhost --no-tui --yes
+    ./bin/devenv machines status netcup \
+      -O machines.netcup.target.host:string root@localhost --no-tui
+    readlink -f /run/current-system              # must equal the eval'd system path
 
 The declaration in `devenv.nix` names the **public** address as the target, so
-the same file still works for a deploy driven from another machine; the
-`-O machines.netcup.target.host:string root@localhost` override inside the
-scripts redirects that invocation only.
+the same file still works for a deploy driven from another machine. The
+`-O machines.netcup.target.host:string root@localhost` override redirects that
+one invocation to the host's own loopback.
 
 ## Credentials
 
@@ -48,8 +65,8 @@ Every call that resolves the profile needs `SECRETSPEC_REASON` —
 (`require_reason = true` in `secretspec.toml`). `devenv` forwards no reason flag
 of its own, so the environment variable is the only route. Without it the call
 dies with a reason error that reads like a machine error. Measured
-2026-09-28: the push step in the loop above failed for exactly this reason until
-the reason was added.
+2026-09-28: the push step above failed for exactly this reason until the reason
+was added.
 
 **The sudo boundary does not separate `hbohlen` from these secrets.** The key
 and the token sit in that user's home at 0600; anything running as `hbohlen`
@@ -58,11 +75,10 @@ in place — but the boundary is no longer where it was.
 
 ## Facts that cost a failure
 
-* **`/bin/bash` does not exist** on NixOS. The scripts use
-  `#!/usr/bin/env bash`; run them as `./scripts/x.sh` or `bash scripts/x.sh`.
-* **The host has no `python3`.** The scripts parse JSON with grep/sed/awk on
-  purpose — a parser that needs python3 passes in a shell that happens to carry
-  it and fails everywhere else.
+* **`/bin/bash` does not exist** on NixOS. Scripts use `#!/usr/bin/env bash`.
+* **The host has no `python3`.** Anything that runs there parses JSON with
+  grep/sed/awk on purpose — a parser that needs python3 passes where python3
+  happens to exist and fails everywhere else.
 * **A failed activation rolls back on its own**: the previous system comes back,
   `machines status` reports `phase: rolled-back`, and the host keeps answering
   SSH. `devenv machines rollback` exists as a manual path but is not usually
@@ -79,9 +95,16 @@ in place — but the boundary is no longer where it was.
 
 ## Layout
 
-    devenv.nix         the Machine: target, client identity, install secrets, module imports
+    devenv.nix         the Machine declaration + the workstation `imports`
     devenv.yaml        inputs (devenv v2.4.0, disko, home-manager, llm-agents) + secretspec
     devenv.lock        the pins
+    modules/           the shell layer, imported by devenv.nix
+                         tooling.nix     non-agent CLIs (locked nixpkgs)
+                         languages.nix   runtimes replacing mise
+                         agents.nix      agent CLIs (pinned llm-agents)
+                         shell.nix       nu, the token export, the smoke test
+                         ingress.nix     prototype Caddy ingress
+                         dsh.nix         the declared dsh Web instance
     hosts/netcup/      the NixOS configuration
                          default.nix     users, sshd, bootloader, assertions
                          disko.nix       disk layout (source of every fileSystems entry)
@@ -90,10 +113,12 @@ in place — but the boundary is no longer where it was.
                          self-deploy.nix nix settings, caches, git, the loop record
                          operator.nix    the operator's home-manager role
                          agents.nix      hermes-agent + herdr
+    dsh/               the dsh Web instance's seed material and runtime home
+    docs/adr/          the decisions that are hard to reverse
+    docs/research/     dated evidence reports
     secretspec.toml    secret declarations; values live in the 1Password `dev` vault
     bin/devenv         pinned devenv 2.4.0 (with its cachix substituter flags)
-    scripts/           self-deploy-drift.sh — the gate before a deploy
-                       self-deploy-run.sh — the deploy itself
+    CONTEXT.md         the glossary
 
 ## History
 

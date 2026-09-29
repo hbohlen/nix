@@ -9,8 +9,10 @@
 # owns 100.115.197.61:443 (measured live), so this process binds HIGH ports:
 #   9443  dashboard  -> 127.0.0.1:9119
 #   9444  gateway    -> 127.0.0.1:8644 (webhook) + 8642 (api_server)
-#   9445  dsh        -> 127.0.0.1:3080 (the declared dsh web instance)
-# All three bind 100.115.197.61 (tailscale0) ONLY: a non-tailnet client has no
+# dsh's port-less public name is served by the system Caddy on :443, which
+# reverse-proxies directly to this shell's loopback dsh process. Do not add a
+# second dsh site here: the authority-bound cookie must match the port-less URL.
+# Both sites bind 100.115.197.61 (tailscale0) ONLY: a non-tailnet client has no
 # route to that address, which is the research's ranked-first architecture.
 # No firewall change is made: the system Caddy already owns 443 and this
 # process adds no new broadly-bound listener.
@@ -40,9 +42,8 @@
 #
 # dsh.hbohlen.space DID carry an A record to the same offline node and was
 # repointed to 100.115.197.61 on 2026-09-29 (DNS-only, TTL 300, previous value
-# 100.87.45.48) — without it the site below answers nothing, because a specific
-# record outranks the wildcard. The change is not code and cannot be expressed
-# here; it is recorded in docs/dsh-web-endpoint.md and in the ticket.
+# 100.87.45.48). System Caddy's existing :443 route serves the name; this module
+# declares only the dsh upstream process, not a duplicate high-port site.
 { pkgs, lib, config, ... }:
 
 let
@@ -102,28 +103,6 @@ let
       }
     }
 
-    # dsh, THE DECLARED WEB INSTANCE (modules/dsh.nix).
-    #
-    # THE PORT ANSWER (ticket 06's open question): 9445. The system caddy owns
-    # the tailnet IP's 443 until promotion, so the repo-owned site takes a high
-    # port. D24 still holds — this Caddyfile is the successor of
-    # /etc/caddy/Caddyfile, and the site moves to 443 at the D8 promotion.
-    #
-    # Intermediately, https://dsh.hbohlen.space (no port) is served by the SYSTEM
-    # caddy's `*.hbohlen.space` block, which is not in this repo. That is the
-    # recorded interim, not a claim of ownership: the repo declares :9445, and
-    # docs/dsh-web-endpoint.md says which URL is which.
-    #
-    # NO `header_up Host` HERE, AND THAT IS LOAD-BEARING. dsh's /api fence
-    # compares the Host authority, and its session cookie is authority-bound:
-    # a rewrite to 127.0.0.1:3080 fails the fence with 403 and mints a cookie
-    # no browser sends back to the domain. Caddy preserves the incoming Host by
-    # default (measured: a forged Host through this site gets 403, which proves
-    # the original authority reaches dsh).
-    https://dsh.hbohlen.space:9445 {
-      import tailnet_tls
-      reverse_proxy 127.0.0.1:3080
-    }
   '';
 in
 {

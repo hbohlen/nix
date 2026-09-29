@@ -15,3 +15,7 @@ result-*
 # the measured hardware, not config. Tracking it would make a later switch to
 # the default facter path silently import a stale report.
 .machines/
+
+# DeepSeek Harness runtime home: sessions, settings imports, launch tokens,
+# and operator credentials stay under the repo's dsh/ boundary, never tracked.
+/dsh/.dsh/

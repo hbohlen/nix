@@ -25,6 +25,7 @@ Every claim below has one of three marks:
 | Loopback-only methods | None on 0.1.5-rc.1. One fence, authority-based. |
 | Models page fails remotely | Client-side settings scope, not the fence. |
 | 0.1.6 / 0.1.7 remote story | None landed. Fronting the loopback server stays unsupported. |
+| Local bare-domain phone entry | Implemented as a token-to-cookie redirect bootstrap; this is a local proxy integration, not an upstream remote-access feature. |
 | Shim survives 0.1.5 -> 0.1.7 | Yes, with one routing item to verify. |
 
 ---
@@ -347,6 +348,38 @@ Other facts:
 
 ---
 
+## Deployment follow-up: phone entry (2026-09-29)
+
+The upstream findings above remain unchanged: dsh still binds to loopback, emits
+a per-process launch token, and does not provide a supported remote-access
+mode. The local deployment now makes the bare domain usable on tailnet phones
+without asking the operator to retrieve that token manually.
+
+- The devenv-managed `dsh-phone-entry` process reads the current
+  `dsh/.dsh/launch.url`, which the dsh wrapper writes with mode `0600`.
+- System Caddy sends tokenless `GET /` requests without a dsh session cookie to
+  that redirector on `127.0.0.1:3082`. The redirector responds with a no-store
+  `302` to the current token URL. Caddy sends requests with a token or dsh
+  cookie directly to dsh on `127.0.0.1:3080`.
+- Caddy's cookie matcher prevents a loop when dsh redirects to `/` after token
+  exchange. The redirector suppresses request logging. Do not enable Caddy
+  access logs that expose `Location` headers.
+- The system Caddy route is configured in `/etc/caddy/Caddyfile` on contabo.
+  It is outside this repository. The devenv process set must be running for the
+  phone entry to work.
+- Each tailnet device completes dsh's normal token exchange and gets its own
+  browser cookie. Tailnet membership is the outer access boundary. A stale
+  cookie on the phone can block the first exchange; clearing the site's cookies
+  lets the bare-domain bootstrap run again.
+
+Verified: a tokenless HTTPS request redirects, a fresh browser loads the dsh
+page and remote-settings shim, the authenticated API request passes the auth
+fence, and `devenv tasks run dsh:smoke` passes. The launch token is still valid
+only for the lifetime of its dsh process. The redirector always reads the
+current URL rather than retaining a separate token copy.
+
+---
+
 ## Method
 
 Probe scripts, in the card workspace:
@@ -357,5 +390,7 @@ Probe scripts, in the card workspace:
 - `probe-api.sh` — fence tests across Host, cookie, and Origin.
 - `compare-tags.sh` — the browser-auth contract across three tags.
 
-Tokens and cookies were held in shell variables only. No token was written to a
-file.
+During the original upstream probes, tokens and cookies stayed in shell
+variables. Those probes did not write tokens to files. The later local
+deployment writes dsh's current launch URL to the mode-0600 runtime file noted
+in the deployment follow-up above.
