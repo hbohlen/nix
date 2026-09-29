@@ -1,10 +1,8 @@
 # devenv.nix — the netcup HOST, declared as a devenv Machine (devenv 2.4+).
 #
 # One file, two consumers: `devenv shell` for the workstation half and
-# `devenv machines install|deploy` for the host half. The workstation half is
-# deliberately empty for this milestone — every package added to `packages` is
-# one more thing between us and a first boot, and none of them help a host
-# partition its disk.
+# `devenv machines install|deploy` for the host half. The workstation half lives
+# in ./modules/*.nix and is imported below, per D13.
 #
 # Use `bin/devenv` (pinned 2.4.0), NEVER bare `devenv` — on a workstation.
 # The rule is workstation-only: the global profile binary there is 2.2.2 and has
@@ -12,6 +10,17 @@
 # installs a bare `devenv` at the SAME 2.4.0 (hosts/netcup/operator.nix), so the
 # two names agree and either works.
 {
+  # THE WORKSTATION HALF, split per D13: one module per tool group, imported
+  # here beside the Machine declaration that is the host half. The split is not
+  # cosmetic — D2 is the reason this map exists, so the shell's contents are
+  # kept in named groups that each record which decision put them there.
+  imports = [
+    ./modules/tooling.nix # non-agent CLI tools, locked nixpkgs (D25)
+    ./modules/languages.nix # runtimes, replacing mise (D14)
+    ./modules/agents.nix # agent CLIs, pinned llm-agents input (D19, D25)
+    ./modules/shell.nix # nu as the shell, and the token export (D26, D36)
+  ];
+
   machines.netcup = {
     # What sets nixpkgs.hostPlatform. Devenv builds its own module list
     # (hostPlatform → disko.nixosModules.disko → its internal recovery + facts

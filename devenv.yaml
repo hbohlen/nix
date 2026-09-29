@@ -39,6 +39,27 @@
 # is missing whenever a script or another operator runs the command.
 allow_unfree: true
 
+# THE SHELL TYPE, AND WHY IT IS DECLARED HERE RATHER THAN IN A MODULE.
+# The pinned 2.4.0 resolves the shell in this order (measured in
+# `devenv-core/src/settings.rs`): `devenv.yaml`'s `shell:` first, then the
+# hook's `_DEVENV_SHELL_HINT`, then `$SHELL`, then the login shell, then bash.
+# Declaring it here is therefore the highest-priority source, and it beats the
+# zsh hook on the workstation on purpose: zsh stays the OS login shell, and nu
+# becomes the shell INSIDE the project (D26, D29).
+#
+# An unsupported VALUE falls back to bash with a warning. A missing BINARY does
+# not, which is why modules/shell.nix declares `nushell` as a package instead of
+# trusting the fallback (Q3b).
+shell: nu
+
+# The running CLI and the locked modules must agree. The workstation's bare
+# `devenv` is 2.2.2 and has no `machines` subcommand; bin/devenv is 2.4.0 and
+# matches the locked `devenv` node. Making that a hard requirement turns the
+# wrong-binary failure from a late, confusing eval error
+# (`Failed to get attribute 'devenv.config.machinesMeta'`) into a version
+# boundary.
+require_version: true
+
 secretspec:
   enable: true
   provider: dev
