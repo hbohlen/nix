@@ -1,4 +1,4 @@
-> Provenance: consolidated from two parallel research passes (kanban cards t_5dedd9b4 dispatcher run + delegation sa-0-7de8452d). This version keeps the deeper findings: systemd dsh-web.service discovery, the dsh-web-capture-url journal race, and the live probes.
+> Provenance: consolidated from two parallel research passes (dispatcher task t_5dedd9b4 + delegation sa-0-7de8452d). This version keeps the deeper findings: systemd dsh-web.service discovery, the dsh-web-capture-url journal race, and the live probes.
 
 # dsh web access surface — research digest
 

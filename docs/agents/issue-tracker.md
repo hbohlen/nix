@@ -1,83 +1,64 @@
-# Issue tracker: Hermes Kanban
+# Issue tracker: Local Markdown
 
-Issues, specs and tickets for this repo live as cards on a Hermes Kanban board.
-The active board for this repo is **`nixos`** (slug `nixos`, name "NixOS
-Rebuild"); its SQLite DB is `~/.hermes/kanban/boards/nixos/kanban.db`, and the
-active board slug is the contents of `~/.hermes/kanban/current`. A second board,
-`wiki`, exists for the Obsidian vault. Drive either with `hermes kanban <verb>`,
-or with the `kanban_*` tools from inside an agent session.
+Issues, specs and tickets for this repo live as markdown files under
+`.scratch/`, which is untracked on purpose (see `.gitignore`). There is no
+external tracker — no board, no database, no CLI. The files are the tracker.
 
-`~/.hermes/kanban.db` (the old single-file `default` board) is legacy and no
-longer receives work — do not read it for this repo's state.
+## Layout
 
-## Board, and the one in-repo artifact
+- One effort per directory: `.scratch/<effort-slug>/`
+- The **map** (wayfinder) is `.scratch/<effort-slug>/map.md`
+- The **spec**, when one exists, is `.scratch/<effort-slug>/spec.md`
+- **One ticket per file**: `.scratch/<effort-slug>/issues/NN-<slug>.md`,
+  numbered from `01`, never a single combined tickets file
+- Triage state is the `Status:` line near the top of each ticket file (see
+  `triage-labels.md` for the role strings)
+- Comments and conversation history append to the bottom of the file under a
+  `## Comments` heading
 
-The board is the tracker for **dispatchable work**: cards, claims, runs, and
-their conversation. They are not files, and creating one does not touch this
-repo.
+The live effort today is `.scratch/devenv-layering/` — the shell-vs-machine
+layering map and its decision tickets. It is the worked example this doc
+describes.
 
-The one exception is `.scratch/devenv-layering/` — the untracked **wayfinder
-map** (`map.md`) and its ten ticket files (`issues/NN-*.md`). That map is the
-design/decision record for the shell-vs-machine layering effort, written as
-markdown because it predates and outlives any single card. Keep it in step with
-the board, but do not treat its `Status:` lines as the tracker: the board is
-where state changes are recorded.
+## The `Status:` line leads
 
-## If the CLI cannot write
-
-`hermes kanban` may fail to open a board on this workstation with:
-
-    kanban: could not initialize database: [Errno 30] Read-only file system:
-    '/home/hbohlen/.hermes/kanban/boards/nixos/kanban.db.init.lock'
-
-The board files live under the DSH file sandbox, which is workspace-write and
-denies the lock outside the session workspace. In that case read the board
-read-only with sqlite3 and report the state; do not "fix" the DB:
-
-    sqlite3 "file:$HOME/.hermes/kanban/boards/nixos/kanban.db?mode=ro" \
-      "SELECT id,title,status,assignee FROM tasks ORDER BY created_at;"
-
-## Conventions
-
-- **Create an issue**: `hermes kanban create "<title>" --body "..." --assignee <profile> [--triage] [--parent <id>] [--json]`. Use a quoted body or a file for multi-line text.
-- **Read an issue**: `hermes kanban show <task-id>` — prints the body, comments, runs and events.
-- **List issues**: `hermes kanban list` with `--status <s>`, `--assignee <profile>`, `--tenant <t>`, `--limit N`.
-- **Comment on an issue**: `hermes kanban comment <task-id> "<body>"` (tool: `kanban_comment`). Comments are the conversation history; there is no separate thread object.
-- **Move state**: `hermes kanban unblock`, `promote`, `request-review`, `request-changes`, `complete`, `archive`, `block`. There is no "apply a label" operation — see `triage-labels.md`.
-- **Attach a file**: `hermes kanban attach <task-id> <path>` (tool: `kanban_attach`; URLs via `kanban_attach_url`).
-- **Depend on another ticket**: `hermes kanban link <parent> <child>`, or `--parent <id>` at create time. A child waits in `todo` until every parent reaches `done`.
-
-Task ids are `t<N>`, and there is a single number space — a bare `t42` always means the card, never a file.
+A ticket's `Status:` line is the state. Nothing else records it, so the file is
+updated in the same action as the state change: `open` -> `claimed` before work
+starts, `claimed` -> `resolved` with the answer when it is done. The map's
+`Status:` header follows its tickets; it does not lead them.
 
 ## When a skill says "publish to the issue tracker"
 
-Create a card with `hermes kanban create`. Default to `--created-by` untouched and assign the profile that should do the work. Break multi-part work into one card per ticket and link them with `--parent` rather than writing one long card.
+Create a new file under `.scratch/<effort-slug>/`, creating the directory if
+needed. Break multi-part work into one file per ticket, numbered in dependency
+order, and express dependencies with `Blocked by:` lines rather than one long
+file.
 
 ## When a skill says "fetch the relevant ticket"
 
-Run `hermes kanban show <task-id>`. The card body, every comment, prior runs and the event log are all in that one output — read it before asking the user for context.
+Read the file at the referenced path. The user normally passes the path or the
+issue number directly.
 
 ## Wayfinding operations
 
-Used by `/wayfinder`. The **map** is a parent card holding the Notes / Decisions-so-far / Fog body. Each **child ticket** is a card created with `--parent <map-id>`, carrying its question in the body.
+Used by `/wayfinder`. The **map** is `.scratch/<effort>/map.md`; each **child
+ticket** is `.scratch/<effort>/issues/NN-<slug>.md`.
 
-- **Blocking**: a `task_links` parent→child edge, set at create time (`--parent`) or later (`hermes kanban link`). A ticket is unblocked when every parent is `done`.
-- **Frontier query**: list the map's children, drop any with an unfinished parent or a live claim; first in map order wins. `--status` takes a single value, not a repeatable flag, so either read the whole board with `hermes kanban list --json` and filter, or run `--status ready` and `--status todo` as two calls.
-- **Claim**: assign the ticket to a profile and let the dispatcher start it. The claim is the board's, not a file's — no manual `Status:` line to write.
-- **Resolve**: `hermes kanban complete <id> --summary "<answer>"` (tool: `kanban_complete`), then append a context pointer (gist + card id) to the map's Decisions-so-far with a comment on the map card.
+- **Type**: a `Type:` line records `research` / `prototype` / `grilling` /
+  `task`.
+- **Blocking**: a `Blocked by: NN, NN` line near the top. A ticket is unblocked
+  when every file it lists is `resolved`.
+- **Frontier**: scan `issues/` for files that are open, unblocked and unclaimed;
+  first by number wins.
+- **Claim**: set `Status: claimed` and save before any work.
+- **Resolve**: append the answer under an `## Answer` heading, set
+  `Status: resolved`, then append a context pointer (gist + file) to the map's
+  Decisions-so-far in `map.md`.
 
-## Who picks work up
+## Why local markdown
 
-The dispatcher runs inside the Hermes gateway (`kanban.dispatch_in_gateway: true` by default). A card only moves `ready -> running` while the gateway is running, so start it with `hermes gateway start` before expecting autonomous work to begin.
-
-Two rules that bite quietly:
-
-- **The assignee must be a real profile.** A card whose `--assignee` is not an installed Hermes profile is dropped by the dispatcher and sits in `ready` forever. Check with `hermes profile list`.
-- **Per-board isolation.** Workers get `HERMES_KANBAN_BOARD` pinned, so a card only ever sees its own board. Use `hermes kanban --board <slug>` (or `hermes kanban boards switch <slug>`) to work on a different one.
-
-## Workspaces
-
-A card executes in an isolated workspace, configured per card:
-
-- `--workspace scratch` (default): a throwaway temp dir. Good for research, specs and planning tickets.
-- `--workspace worktree:<path>` or `--project <slug>`: a git worktree anchored to a repo, with a deterministic branch. Use this for tickets that change code in this repo. `hermes project create` + `hermes project bind-board` wires a project to a board so the anchor is implicit.
+The design record and the tracker are the same artifact, so a decision ticket
+can cite its own evidence without a second system to keep in step. The cost is
+that nothing dispatches work: an agent picks the frontier up by reading the
+files. If this repo ever grows a real dispatch queue again, this doc is the one
+place that says where issues live.

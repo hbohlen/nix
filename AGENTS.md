@@ -2,14 +2,14 @@
 
 ### Issue tracker
 
-Issues are cards on the Hermes Kanban board (`hermes kanban`); this repo's board
-is `nixos` (`~/.hermes/kanban/boards/nixos/kanban.db`), not the legacy
-`~/.hermes/kanban.db`. The untracked `.scratch/devenv-layering/` map is the
-design record, not the tracker. See `docs/agents/issue-tracker.md`.
+Issues, specs and tickets are markdown files under the untracked `.scratch/` —
+one effort per directory, one file per ticket at
+`.scratch/<effort>/issues/NN-<slug>.md`, with a `Status:` line that leads. See
+`docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Kanban has no labels: the five triage roles map to card statuses and block kinds. See `docs/agents/triage-labels.md`.
+The five triage roles are written as the ticket's `Status:` line. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

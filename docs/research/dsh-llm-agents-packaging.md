@@ -1,4 +1,4 @@
-> Provenance: consolidated from two parallel research passes (kanban cards t_7b6bc62d dispatcher run + delegation sa-1-4541a9cb). This version keeps the deeper findings: the node-addon boot failure of the stock llm-agents build and the tested overrideAttrs fix, the flock/storage analysis, and the checked-against-live-state migration list.
+> Provenance: consolidated from two parallel research passes (dispatcher task t_7b6bc62d + delegation sa-1-4541a9cb). This version keeps the deeper findings: the node-addon boot failure of the stock llm-agents build and the tested overrideAttrs fix, the flock/storage analysis, and the checked-against-live-state migration list.
 
 # Digest: dsh via llm-agents.nix on this shell
 
