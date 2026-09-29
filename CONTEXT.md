@@ -119,6 +119,15 @@ everything else to `127.0.0.1:3080`. This repo declares the upstream and the
 redirector, not the system route; promotion to netcup moves both. (D42)
 _Avoid_: dsh site on a high port (the `:9445` shape was removed)
 
+**Host profile**:
+The `profiles.hostname.<name>.module.ingress` block in `devenv.nix` that selects
+one host's ingress facts — its tailnet address and MagicDNS name, its HTTPS
+ports, and whether it owns the port-less dsh route. `contabo` is the 9443/9444
+prototype; `netcup` is port-less 443 plus the dsh route. devenv picks the block
+from the running hostname, so the same modules configure the right ingress with
+no flag and no local file. (D50)
+_Avoid_: per-machine config, environment
+
 ### Secrets
 
 **Token file**:

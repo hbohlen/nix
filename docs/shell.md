@@ -199,10 +199,19 @@ $ devenv processes logs caddy     # follow one
 $ devenv down                     # stop the manager and its processes
 ```
 
-`dsh.hbohlen.space` is port-less and is served by the **system** Caddy on the
-tailnet's `:443`; this repository declares only the upstream and the redirector,
-never a second dsh site (D42, ADR 0002's exception). That route is outside this
-repo. Full runbook: [`docs/dsh-web-endpoint.md`](./dsh-web-endpoint.md).
+The ports above are **this workstation's**. The ingress is parameterized per
+host by `profiles.hostname.*` in [`devenv.nix`](../devenv.nix) (ticket 08 step 2,
+D50): the `netcup` profile renders the two Hermes sites port-less on `:443` and
+also declares the dsh route, while `contabo` keeps the `:9443`/`:9444` prototype
+and leaves dsh to the system Caddy, which owns the port-less name (D42, ADR
+0002's exception). An unprofiled host declares no ingress at all.
+
+`dsh.hbohlen.space` is port-less. On this workstation the **system** Caddy serves
+it on the tailnet's `:443` and this repository declares only the upstream and the
+redirector; that route is outside this repo. On the promoted netcup host, which
+has no other Caddy, the route *is* declared — `modules/ingress.nix` renders the
+`@dshEntry` + `@dsh` matcher order behind `ingress.serveDsh` (D48, ADR 0008).
+Full runbook: [`docs/dsh-web-endpoint.md`](./dsh-web-endpoint.md).
 
 ## 7. The checks worth knowing
 

@@ -148,4 +148,44 @@
     # role, disko, install.*, deploy.healthCheck, deploy.rollbackTimeout — and
     # nothing else.
   };
+
+  # THE HOST FACTS THE SHELL MODULES PARAMETERIZE (ticket 08 step 2, D50).
+  #
+  # The same shell modules run on both machines, but the ingress differs: contabo
+  # coexists with its system caddy.service on the high ports (D21) and does NOT
+  # declare the port-less dsh route (its system Caddy owns it, D42); netcup has
+  # no other Caddy, so it owns port-less 443 and must carry the `@dshEntry` +
+  # `@dsh` route from docs/dsh-web-endpoint.md, or phone entry breaks.
+  #
+  # devenv selects a profile by the RUNNING hostname
+  # (`profiles.hostname.<uname -n>.module`), so `devenv up` on either machine
+  # renders the right Caddyfile and the right dsh `--trusted-host` list with no
+  # flag and no untracked local file to keep in sync. D13's "no profiles" was
+  # about toolset selection; a hostname profile that selects host facts is the
+  # mechanism it explicitly left room for ("re-introducing profiles later does
+  # not rewrite the file layout"). A host with no profile keeps the modules'
+  # false/null defaults and still evaluates — D3's portability property.
+  #
+  # The addresses are measured facts, not conventions. `tailscale status`
+  # reports contabo as 100.115.197.61 and netcup as 100.95.168.15. netcup's
+  # MagicDNS name is `nc.worm-hue.ts.net`, not `netcup...`: the node name is
+  # pinned to `--hostname=nc` in hosts/netcup/tailnet.nix, independently of
+  # `networking.hostName = "netcup"`.
+  profiles.hostname.contabo.module.ingress = {
+    enable = true;
+    tailnetIp = "100.115.197.61";
+    tailnetName = "contabo.worm-hue.ts.net";
+    # dashboardPort/gatewayPort keep the module's 9443/9444 defaults, and
+    # serveDsh stays false: the system Caddy owns the port-less dsh route here.
+  };
+
+  profiles.hostname.netcup.module.ingress = {
+    enable = true;
+    tailnetIp = "100.95.168.15";
+    tailnetName = "nc.worm-hue.ts.net";
+    # Port-less 443 for both Hermes sites, and the dsh route this host owns.
+    dashboardPort = 443;
+    gatewayPort = 443;
+    serveDsh = true;
+  };
 }

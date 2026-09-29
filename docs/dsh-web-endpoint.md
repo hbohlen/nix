@@ -11,7 +11,11 @@ Measured and verified 2026-09-29 on `contabo` (the operator workstation, tailnet
 
 The system Caddy currently owns the hostname's `:443` route. `modules/dsh.nix`
 declares the loopback-only upstream process. At ingress promotion (ADR 0002,
-D8), move the site into the machine layer and retire the workstation Caddy route.
+D8), the promoted stack is the **shell layer run on netcup** (ADR 0008), not a
+NixOS declaration: the workstation Caddy route retires, and netcup's shell Caddy
+carries the route. That Caddyfile is declared in `modules/ingress.nix`, rendered
+only on a host whose `ingress.serveDsh` is true — which the `netcup` hostname
+profile sets in `devenv.nix` (D50).
 
 **The operator URL is port-less.** The system `caddy.service` owns
 `100.115.197.61:443`; its `dsh.hbohlen.space` route reverse-proxies to the
@@ -46,14 +50,16 @@ hostname on any port (measured in `api-request-trust.ts`).
 | Concern | Where |
 |---|---|
 | Browser-facing ingress | System Caddy's `dsh.hbohlen.space` route on tailnet `:443` |
+| Promoted ingress (netcup) | `modules/ingress.nix`, rendered on the host whose `ingress.serveDsh` is true (`profiles.hostname.netcup` in `devenv.nix`, D50) |
 | dsh program | `modules/dsh.nix` — the pinned `llm.dsh`, under a pinned upstream Node |
 | dsh Web process | `modules/dsh.nix` (`processes.dsh-web`) |
+| Trusted authorities | `modules/dsh.nix`, from `ingress.tailnetName` per host (D50) |
 | Phone entry redirector | `dsh/phone-entry.py`, loopback `127.0.0.1:3082`, managed by devenv |
 | System Caddy route | `/etc/caddy/Caddyfile` on contabo (outside this repo); routes tokenless root requests without a dsh cookie to `127.0.0.1:3082` |
 | Declared home seed | `modules/dsh.nix` + `dsh/` (settings, profile overlay, plugin) |
 | Plugin source of truth | `dsh/plugins/remote-settings/` |
-| Launch flow and smoke test | `modules/dsh.nix` (`tasks."dsh:open"`, `tasks."dsh:smoke"`) |
-| DNS record | Cloudflare, DNS-only, `dsh.hbohlen.space → 100.115.197.61` |
+| Launch flow and smoke test | `modules/dsh.nix` (`tasks."dsh:open"`, `tasks."dsh:smoke"`); the smoke test resolves the tailnet address from `ingress.tailnetIp` (D50) |
+| DNS record | Cloudflare, DNS-only, `dsh.hbohlen.space → 100.115.197.61` (repoints to netcup at ticket 08 step 4) |
 
 ## Operate
 

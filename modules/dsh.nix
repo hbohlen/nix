@@ -10,7 +10,10 @@
 #
 # WHAT THE UPSTREAM SERVES (decided, not guessed — see docs/dsh-web-endpoint.md):
 #   dsh.hbohlen.space  -> 127.0.0.1:3080  (this process)
-#   the system Caddy serves the port-less hostname on tailnet :443.
+#   the Caddy that owns the name serves the port-less hostname on tailnet :443:
+#   the SYSTEM Caddy on contabo (D42; outside this repo), the SHELL Caddy from
+#   ./ingress.nix on the promoted netcup host (D48). This module declares only
+#   the loopback upstream and the redirector, never the public site.
 #
 # THREE MEASURED FACTS THAT SHAPE EVERY LINE BELOW. All from the research card
 # (docs/research/dsh-web-remote-access.md in this repo):
@@ -49,6 +52,19 @@
 let
   system = pkgs.stdenv.hostPlatform.system;
   dsh = inputs.llm-agents.packages.${system}.dsh;
+
+  # THE TRUSTED AUTHORITIES ARE A HOST FACT (ticket 08 step 2). The public name
+  # `dsh.hbohlen.space` is the same on both machines and is always trusted. This
+  # host's MagicDNS name comes from `ingress.tailnetName`, which devenv's
+  # hostname profiles set (devenv.nix): contabo gets `contabo.worm-hue.ts.net`,
+  # netcup gets `nc.worm-hue.ts.net`. A PORT-LESS entry matches the hostname on
+  # ANY port (fact 2 in the header), so the old explicit `:8443` companion entry
+  # was redundant — it lives on implicitly and is not duplicated per host. Null
+  # (no hostname profile) simply omits the tailnet entry; the public name still
+  # works.
+  trustedHosts = [ "dsh.hbohlen.space" ]
+    ++ lib.optional (config.ingress.tailnetName != null) config.ingress.tailnetName;
+  trustedHostArgs = lib.concatMapStringsSep " " (host: "--trusted-host ${host}") trustedHosts;
 
   # THE NODE PROBLEM, MEASURED 2026-09-29 — why this wrapper exists.
   #
@@ -167,9 +183,9 @@ let
   '';
 
   # THE PROCESS. `--trusted-host` carries the authority the operator types; the
-  # port-less entry matches the browser-facing domain. The tailnet hostname
-  # entries are kept from the hand-launched unit so existing tailnet access keeps
-  # working.
+  # port-less public entry matches the browser-facing domain. The tailnet entry
+  # is this host's MagicDNS name, parameterized above (ticket 08 step 2), so the
+  # same declaration is correct on contabo and on netcup.
   #
   # THE STDOUT CAPTURE IS THE LAUNCH FLOW'S ONLY SOURCE. dsh prints the token URL
   # once at startup and never writes it to disk; `awk` tees it to
@@ -191,9 +207,7 @@ let
       --host 127.0.0.1 \
       --port 3080 \
       --no-open \
-      --trusted-host dsh.hbohlen.space \
-      --trusted-host contabo.worm-hue.ts.net \
-      --trusted-host contabo.worm-hue.ts.net:8443 \
+      ${trustedHostArgs} \
     | ${pkgs.gawk}/bin/awk -v f="$url_file" '
         { print; fflush() }
         match($0, /http:\/\/127\.0\.0\.1:3080\/\?token=[A-Za-z0-9_-]+/) {
@@ -265,8 +279,11 @@ in
 
   # The smoke test the ticket asks for, on the model of `ingress:smoke`: it
   # checks the pieces that can be checked from inside the shell, and it fails
-  # loudly rather than reporting a green chain it did not see.
-  tasks."dsh:smoke" = {
+  # loudly rather than reporting a green chain it did not see. The tailnet
+  # address is `ingress.tailnetIp` (ticket 08 step 2), so the same assertion is
+  # correct on contabo and on netcup; a host with no hostname profile (null
+  # address) has no tailnet site to assert and drops the task.
+  tasks."dsh:smoke" = lib.mkIf (config.ingress.tailnetIp != null) {
     exec = ''
       set -euo pipefail
 
@@ -274,7 +291,8 @@ in
       # the local resolver: the point is the binding, and a cached A record must
       # not be able to turn a red chain green.
       site="https://dsh.hbohlen.space"
-      resolve="--resolve dsh.hbohlen.space:443:100.115.197.61"
+      tailnet_ip="${config.ingress.tailnetIp}"
+      resolve="--resolve dsh.hbohlen.space:443:$tailnet_ip"
       url_file="''${DSH_HOME:-$PWD/dsh/.dsh}/launch.url"
 
       # 1. the process is up and loopback-only
@@ -288,9 +306,11 @@ in
         echo "dsh:smoke: dsh is listening on a non-loopback address"; exit 1;
       }
 
-      # 2. the HTTPS site is bound on the tailnet address by system Caddy.
-      ${pkgs.iproute2}/bin/ss -tln | grep -q '100.115.197.61:443' || {
-        echo "dsh:smoke: Caddy is not bound on 100.115.197.61:443"; exit 1;
+      # 2. the HTTPS site is bound on the tailnet address by the Caddy that owns
+      #    the name: the system one on contabo, this repo's shell Caddy on the
+      #    promoted netcup host.
+      ${pkgs.iproute2}/bin/ss -tln | grep -q "$tailnet_ip:443" || {
+        echo "dsh:smoke: Caddy is not bound on $tailnet_ip:443"; exit 1;
       }
 
       # 3. a fresh launch URL mints a cookie for the DOMAIN authority, and the

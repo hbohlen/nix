@@ -53,6 +53,9 @@ drop it and break phone entry.
   measured 502). Declaring or relocating it is ticket 08's work.
 - The dsh home (`dsh/.dsh`), its model credentials, and `~/.hermes/config.yaml`
   must exist on netcup before the promoted stack serves anything.
-- `modules/dsh.nix` and `modules/ingress.nix` hardcode the workstation's tailnet
-  name and address (`contabo.worm-hue.ts.net`, `100.115.197.61`); ticket 08
-  parameterizes them for the netcup run.
+- `modules/dsh.nix` and `modules/ingress.nix` hardcoded the workstation's
+  tailnet name and address (`contabo.worm-hue.ts.net`, `100.115.197.61`).
+  **Resolved by D50** (ticket 08 step 2): `ingress.*` options plus devenv
+  hostname profiles in `devenv.nix` select the per-host address, name, ports,
+  and whether that host owns the dsh route; the netcup profile renders
+  port-less 443 and the `@dshEntry` + `@dsh` route.
