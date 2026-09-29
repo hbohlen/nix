@@ -14,9 +14,33 @@ there, as `hbohlen`.
 
 On the workstation, `cd ~/nix` activates the shell layer by itself (the zsh
 hook, `~/nix/bin/devenv` pinned to 2.4.0). Inside the project shell you get nu,
-the declared tools, and the ingress/dsh processes. The operator runbook for that
-path is `docs/shell.md` (being written under wayfinder ticket 10; until it
-lands, `devenv test` is the check and `modules/*.nix` is the source of truth).
+the declared tools, and the ingress/dsh processes. **`docs/shell.md` is the
+runbook**: the four prerequisites, the login-shell setup, the token bootstrap
+order, first entry, and the checks.
+
+```console
+$ cd ~/nix
+$ ./bin/devenv test --no-tui      # shell layer ok / Tests passed :)
+```
+
+## How the docs are organized
+
+Two kinds, per D10, and one rule for both (ticket 04, D41): **a claim goes in
+only if it is true against the tree.** Edit a doc when a claim in it is false;
+delete it only when its subject is finished; leave it while it records a
+decision still in force.
+
+| Where | What |
+|---|---|
+| `CONTEXT.md` | the glossary — the shared language, nothing else |
+| `docs/adr/` | the decisions that are hard to reverse |
+| `docs/` | operator runbooks: `shell.md`, `dsh-web-endpoint.md`, and (with ticket 08) `netcup.md` |
+| `docs/research/` | dated evidence with verbatim upstream quotes, never aspirational |
+| `docs/agents/` | how this repo's tracker, triage labels, and domain docs work |
+
+The tracker is local markdown under the untracked `.scratch/` — see
+`docs/agents/issue-tracker.md`. `.scratch/devenv-layering/map.md` is the
+wayfinder chart for the current effort.
 
 ## The host deploy loop
 
@@ -122,11 +146,17 @@ in place — but the boundary is no longer where it was.
                          operator.nix    the operator's home-manager role
                          agents.nix      hermes-agent + herdr
     dsh/               the dsh Web instance's seed material and runtime home
+    docs/              operator runbooks (shell.md, dsh-web-endpoint.md)
     docs/adr/          the decisions that are hard to reverse
     docs/research/     dated evidence reports
+    docs/agents/       how the tracker, triage labels, and domain docs work
     secretspec.toml    secret declarations; values live in the 1Password `dev` vault
     bin/devenv         pinned devenv 2.4.0 (with its cachix substituter flags)
     CONTEXT.md         the glossary
+
+The issue tracker is `.scratch/` (untracked), not `docs/`: one effort per
+directory, one markdown file per ticket, `Status:` leads. See
+`docs/agents/issue-tracker.md`.
 
 ## History
 
