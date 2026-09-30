@@ -208,6 +208,21 @@ in
       description = "The gateway site's HTTPS port; see `dashboardPort`.";
     };
 
+    runGateway = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Whether THIS host's shell runs the hermes gateway upstream
+        (`hermes gateway run`, webhook 0.0.0.0:8644, api_server 127.0.0.1:8642).
+
+        False on contabo, where the hermes-managed systemd user service already
+        owns :8644 (the same coexistence rule as `serveDsh`: the system owner
+        stays until the promotion retires it). True on netcup, which has no
+        hermes service at all since the home-manager role was removed (D49) —
+        the promoted stack declares its own upstream (D48).
+      '';
+    };
+
     serveDsh = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -226,6 +241,10 @@ in
         {
           assertion = !config.ingress.enable || config.ingress.tailnetIp != null;
           message = "ingress.enable requires ingress.tailnetIp; set both in a profiles.hostname.<host>.module.ingress block in devenv.nix";
+        }
+        {
+          assertion = !config.ingress.runGateway || config.ingress.enable;
+          message = "ingress.runGateway requires ingress.enable; the gateway upstream only has a Caddy to answer behind when the ingress is on";
         }
       ];
     }
@@ -261,6 +280,28 @@ in
       processes.hermes-dashboard = {
         exec = "${pkgs.writeShellScript "hermes-dashboard" ''
           exec hermes dashboard --host 127.0.0.1 --port 9119 --no-open
+        ''}";
+      };
+
+      # THE GATEWAY UPSTREAM (ticket 08 step 3). Only the host whose shell owns
+      # the upstream declares it: on contabo the hermes-managed systemd user
+      # service already binds :8644 and a second `gateway run` would collide;
+      # on netcup nothing else does (the home-manager role is gone, D49), so
+      # the promoted stack brings its own (D48).
+      #
+      # WHAT IT DOES NOT FIX, MEASURED 2026-09-30. The api_server adapter
+      # refuses to start without API_SERVER_KEY
+      # (`gateway/platforms/api_server.py` `_api_key_passes_startup_guard`:
+      # "Refusing to start: API_SERVER_KEY is required for the API server,
+      # including loopback-only binds"), and `~/.hermes/.env` sets
+      # API_SERVER_ENABLED=true with no key — which is why /v1/* through
+      # hermes-gateway answers 502 while the webhook on :8644 is up. The key is
+      # a secret, so it is provisioned into the operator's HERMES_HOME `.env`
+      # on netcup, never declared here (ADR 0007). Declaring the process is
+      # necessary but not sufficient for a green gateway site.
+      processes.hermes-gateway = lib.mkIf cfg.runGateway {
+        exec = "${pkgs.writeShellScript "hermes-gateway" ''
+          exec hermes gateway run
         ''}";
       };
 

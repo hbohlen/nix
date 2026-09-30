@@ -52,7 +52,7 @@ this on `contabo`, and is the fastest way to see which host profile is active:
 ```json
 { "ingress": { "enable": true, "tailnetIp": "100.115.197.61",
   "tailnetName": "contabo.worm-hue.ts.net", "dashboardPort": 9443,
-  "gatewayPort": 9444, "serveDsh": false } }
+  "gatewayPort": 9444, "serveDsh": false, "runGateway": false } }
 ```
 
 Per-site checks that do not need the vault:
@@ -93,8 +93,15 @@ fails — so the process reads the vault item directly rather than through
 
 - The gateway's **api_server** (`127.0.0.1:8642`) is not running, so
   `hermes-gateway.hbohlen.space:9444/v1/*` answers 502. The webhook upstream
-  (`8644`) is up, so `/` answers 404. Both adapters are configured in
-  `~/.hermes`, outside this repo.
+  (`8644`) is up, so `/` answers 404. **Root cause, measured 2026-09-30 in the
+  pinned source:** the adapter refuses to start without `API_SERVER_KEY`
+  (`gateway/platforms/api_server.py`, `_api_key_passes_startup_guard`:
+  *"Refusing to start: API_SERVER_KEY is required for the API server, including
+  loopback-only binds"*), and `~/.hermes/.env` sets `API_SERVER_ENABLED=true`
+  with no key. The key is a secret, so it is provisioned into the operator's
+  `HERMES_HOME/.env`; it is not declarable here (ADR 0007). The gateway process
+  itself is now declared (§6, §7), so the api_server turns green once that key
+  exists on the host running it.
 - `hermes.hbohlen.space` still A-records to `100.87.45.48`, the offline tailnet
   node `zepyhrus` — not to this host. Reach it with `--resolve` (above) until
   the record is repointed. Every other name resolves through the wildcard
@@ -114,6 +121,7 @@ block from the running hostname.
 | `tailnetName` | `contabo.worm-hue.ts.net` | `nc.worm-hue.ts.net` |
 | `dashboardPort` / `gatewayPort` | `9443` / `9444` | `443` / `443` |
 | `serveDsh` | `false` (system Caddy owns it) | `true` (renders the dsh route) |
+| `runGateway` | `false` (hermes systemd service owns `:8644`) | `true` (declares `hermes gateway run`) |
 
 A host with no profile keeps `enable = false` and null facts, so the shell still
 evaluates on any machine with only the D3 prerequisites. `modules/dsh.nix`
@@ -133,7 +141,14 @@ in matcher order (the netcup profile already renders both; `caddy validate`
 reports `Valid configuration`). DNS for the hermes and dsh names repoints from
 `100.115.197.61` to netcup, and the workstation's out-of-repo route retires.
 
-The remaining acts are ticket 08 steps 3–5: declare the hermes gateway upstream,
-provision the dsh home, credentials and the `op` token on netcup, repoint DNS,
-and deploy. Until then this section is the decision, not a description of a
-running state.
+Step 3's **declaration half landed 2026-09-30**: `ingress.runGateway` is `true`
+in the netcup profile, so that host's shell declares `hermes gateway run`
+(`processes.hermes-gateway`, webhook `:8644`, api_server `:8642`) while contabo
+keeps its hermes systemd user service — the same coexistence rule as `serveDsh`,
+and it follows D48's "the upstreams run on netcup as shell processes". What
+remains is **provisioning, not declaration**: the dsh home, the model
+credentials, `~/.hermes/config.yaml`, the gateway's `API_SERVER_KEY` (§5), and
+the `op` service-account token on netcup. Then steps 4–5: repoint DNS (the
+hermes and dsh names from `100.115.197.61` to netcup), retire the workstation's
+out-of-repo route, and deploy. Until then this section is the decision, not a
+description of a running state.

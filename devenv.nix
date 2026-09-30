@@ -187,5 +187,10 @@
     dashboardPort = 443;
     gatewayPort = 443;
     serveDsh = true;
+    # The gateway upstream too: netcup has no hermes systemd service (the
+    # home-manager role is gone, D49), so the promoted shell stack declares its
+    # own `hermes gateway run` (D48; ticket 08 step 3). On contabo this stays
+    # false — the hermes-managed user service already owns :8644.
+    runGateway = true;
   };
 }
