@@ -19,3 +19,23 @@ result-*
 # DeepSeek Harness runtime home: sessions, settings imports, launch tokens,
 # and operator credentials stay under the repo's dsh/ boundary, never tracked.
 /dsh/.dsh/
+
+# Hermes Agent runtime home (ticket 04 / hermes-config effort). The
+# declarative `config.yaml` lives at `~/nix/hermes/.hermes/config.yaml`
+# and IS tracked — it is the rendered source, not a secret. The OAuth
+# token file and the API-key env file are NOT; both are populated by the
+# upstream module's activation step (`authFile` first-write-wins,
+# `environmentFiles` overwriting each activation). The `mcp-tokens/`
+# directory holds per-server OAuth tokens written by the upstream
+# hermes-agent runtime, also non-shareable.
+#
+# The runtime home does not exist yet (the cutover is ticket 08) — these
+# patterns are written now so the entries are in place when the directory
+# is created. `git status --porcelain` must continue to print nothing
+# inside `~/nix/hermes/.hermes/` once it exists.
+#
+# Patterns are repo-root-relative (gitignore `/` means "from repo root").
+/hermes/.hermes/auth.json
+/hermes/.hermes/.env
+/hermes/.hermes/.env.local
+/hermes/.hermes/mcp-tokens/
