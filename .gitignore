@@ -20,6 +20,28 @@ result-*
 # and operator credentials stay under the repo's dsh/ boundary, never tracked.
 /dsh/.dsh/
 
+# Local research scratch and agent state — never tracked.
+#
+# None of this is the declaration. devenv-matrix/, devenv-research/ and
+# devenv-src-v2.4.0/ are fetched devenv sources and comparison outputs
+# (devenv-research/fetch.sh regenerates them), and research/ is extracted
+# upstream documentation. The repo's own evidence lives in docs/research/.
+#
+# They are IGNORED rather than merely left untracked because the deploy gate
+# reads `git status --porcelain` and refuses a checkout carrying ANY
+# uncommitted difference — an untracked scratch directory reads exactly like
+# an unpushed edit to the declaration, so the gate would block every deploy
+# until these entries existed.
+#
+# /.hermes/ is the Hermes agent's own plan and state directory at the repo
+# root, written by tooling rather than by an operator. The project's Hermes
+# home is hermes/.hermes/, handled separately above.
+/devenv-matrix/
+/devenv-research/
+/devenv-src-v2.4.0/
+/research/
+/.hermes/
+
 # Hermes Agent runtime home (ticket 04 / hermes-config effort). The
 # declarative `config.yaml` lives at `~/nix/hermes/.hermes/config.yaml`
 # and IS tracked — it is the rendered source, not a secret. The OAuth

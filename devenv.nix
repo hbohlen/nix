@@ -16,6 +16,7 @@
     ./modules/tooling.nix # non-agent CLI tools, locked nixpkgs (D25)
     ./modules/languages.nix # runtimes, replacing mise (D14)
     ./modules/agents.nix # agent CLIs, pinned llm-agents input (D19, D25)
+    ./modules/tinyfish.nix # the TinyFish CLI, built from its npm tarball (D25's third source)
     ./modules/shell.nix # nu as the shell, and the token export (D26, D36)
     ./modules/ingress.nix # prototype ingress: Caddy + DNS-01 (D11, D15)
     ./modules/dsh.nix # the declared dsh web instance the ingress fronts
