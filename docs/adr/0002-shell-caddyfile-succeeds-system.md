@@ -12,6 +12,10 @@ reading of D21.
 
 ## Current dsh exception (2026-09-29, D42)
 
+**SUPERSEDED IN PART 2026-09-30 by ADR 0012:** the phone-entry redirector and
+its `@dshEntry` route are deleted; the system route is a plain `@dsh` reverse
+proxy. The port-less, system-Caddy-shape described below stands.
+
 `dsh.hbohlen.space` remains on the system Caddy at tailnet port 443 for now.
 The system route sends tokenless root requests without a dsh cookie to the
 devenv-managed loopback phone-entry redirector (`dsh/phone-entry.py`,

@@ -13,7 +13,7 @@
 #   the Caddy that owns the name serves the port-less hostname on tailnet :443:
 #   the SYSTEM Caddy on contabo (D42; outside this repo), the SHELL Caddy from
 #   ./ingress.nix on the promoted netcup host (D48). This module declares only
-#   the loopback upstream and the redirector, never the public site.
+#   the loopback upstream, never the public site.
 #
 # THREE MEASURED FACTS THAT SHAPE EVERY LINE BELOW. All from the research card
 # (docs/research/dsh-web-remote-access.md in this repo):
@@ -56,9 +56,9 @@ let
   cfg = config.dsh;
 
   # THE ENDPOINT FACTS, declared below as `dsh.*` options (ADR 0011). This let
-  # block derives what they imply; every consumer — the start script, the
-  # redirector's argv, dsh:open, dsh:smoke, and the ingress dshSite —
-  # interpolates these bindings instead of restating a literal. The one port
+  # block derives what they imply; every consumer — the start script, dsh:open,
+  # dsh:smoke, and the ingress dshSite — interpolates these bindings instead of
+  # restating a literal. The one port
   # that is NOT an option: the site's. The launch cookie is bound to the exact
   # authority (`hostname:port`, fact 1 in the header), so the dsh endpoint is
   # only ever served PORT-LESS on the https default, and `siteAddress` encodes
@@ -307,7 +307,7 @@ in
 {
   # THE DSH ENDPOINT INTERFACE (ADR 0011). These options are the whole surface
   # other modules and scripts may know: what the upstream binds, where the
-  # redirector listens, where the launch capture lives, what authority the
+  # launch capture lives, what authority the
   # browser types. Defaults are the measured values; nothing here is a host
   # fact — both machines run the identical endpoint, only the Caddy in front
   # differs. The trusted-host port-less rule, the cookie authority binding,
@@ -317,12 +317,6 @@ in
       type = lib.types.port;
       default = 3080;
       description = "The loopback port the declared dsh web instance binds.";
-    };
-
-    entryPort = lib.mkOption {
-      type = lib.types.port;
-      default = 3082;
-      description = "The loopback port of the phone-entry redirector.";
     };
 
     home = lib.mkOption {
@@ -363,21 +357,6 @@ in
 
   config.processes.dsh-web = {
     exec = "${startDsh}";
-  };
-
-  # System Caddy sends only bare GET / requests to this local redirector. It
-  # reads dsh's mode-0600 current launch URL and redirects the phone to the
-  # normal token exchange. It does not log requests or expose a listener beyond
-  # loopback; tailnet reachability remains controlled by system Caddy's bind.
-  # The endpoint facts arrive as argv (ADR 0011) — phone-entry.py holds none.
-  config.processes.dsh-phone-entry = {
-    exec = ''
-      exec ${pkgs.python3}/bin/python3 ${../dsh/phone-entry.py} \
-        --token-file "${urlFile}" \
-        --entry-port ${toString cfg.entryPort} \
-        --upstream "${upstreamUrl}" \
-        --public-url "${siteAddress}"
-    '';
   };
 
   # THE LAUNCH FLOW (ticket item 4). A stored URL is never a fallback: the token
@@ -440,9 +419,6 @@ in
       ${pkgs.iproute2}/bin/ss -tln | grep -q '127.0.0.1:${toString cfg.port}' || {
         echo "dsh:smoke: nothing listening on 127.0.0.1:${toString cfg.port}"; exit 1;
       }
-      ${pkgs.iproute2}/bin/ss -tln | grep -q '127.0.0.1:${toString cfg.entryPort}' || {
-        echo "dsh:smoke: phone-entry redirector is not listening on 127.0.0.1:${toString cfg.entryPort}"; exit 1;
-      }
       ${pkgs.iproute2}/bin/ss -tln | grep -q '0.0.0.0:${toString cfg.port}' && {
         echo "dsh:smoke: dsh is listening on a non-loopback address"; exit 1;
       }
@@ -459,15 +435,7 @@ in
       token="$(sed -n 's#.*token=\([A-Za-z0-9_-]*\)$#\1#p' "$url_file" | tail -1 || true)"
       test -n "$token" || { echo "dsh:smoke: no launch token captured yet"; exit 1; }
 
-      # 4. a phone entering through the stable bare domain is redirected to
-      #    the current process token without exposing that token in task output.
-      entry_location="$(${pkgs.curl}/bin/curl -s -o /dev/null -w '%{redirect_url}' \
-        $resolve "$site/" || true)"
-      test "$entry_location" = "$site/?token=$token" || {
-        echo "dsh:smoke: bare domain did not redirect to the current dsh launch URL"; exit 1;
-      }
-
-      # 5. a fresh launch URL mints a cookie for the DOMAIN authority, and the
+      # 4. A fresh launch URL mints a cookie for the DOMAIN authority, and the
       #    served page carries the remote-settings shim (the Models fix).
       jar="$(mktemp)"
       trap 'rm -f "$jar"' EXIT
@@ -481,7 +449,7 @@ in
         *) echo "dsh:smoke: the served page carries no remote-settings shim"; exit 1 ;;
       esac
 
-      # 6. THE AUTHORITY REACHED dsh UNCHANGED, and the cookie is what admits
+      # 5. THE AUTHORITY REACHED dsh UNCHANGED, and the cookie is what admits
       #    the caller. Both halves matter: the cookie minted at THIS authority
       #    is accepted (not 401) only if the Host the app saw is the same
       #    authority, and the same route without a cookie is refused. A forged

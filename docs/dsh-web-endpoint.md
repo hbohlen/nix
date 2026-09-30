@@ -18,22 +18,18 @@ only on a host whose `ingress.serveDsh` is true — which the `netcup` hostname
 profile sets in `devenv.nix` (D50).
 
 **The operator URL is port-less.** The system `caddy.service` owns
-`100.115.197.61:443`; its `dsh.hbohlen.space` route reverse-proxies to the
-devenv-managed dsh process on `127.0.0.1:3080`. The hostname resolves to the
-machine's Tailscale IP, and both Caddy and dsh bind only to loopback/tailnet
-addresses. The bare `https://dsh.hbohlen.space/` is the phone-friendly entry
-point: system Caddy sends only a tokenless root request to a loopback redirector,
-which reads the current mode-0600 launch URL and redirects through dsh's normal
-token exchange. dsh then sets its authority-bound session cookie. Paths, API
-requests, requests already carrying a token, and root requests with a dsh
-session cookie continue directly to dsh. The cookie check prevents dsh's own
-post-exchange redirect to `/` from looping back through the redirector. All
-tailnet devices can use this entry point; tailnet membership is the outer access
-boundary, as requested.
+`100.115.197.61:443`; its `dsh.hbohlen.space` route reverse-proxies every
+request to the devenv-managed dsh process on `127.0.0.1:3080`. The hostname
+resolves to the machine's Tailscale IP, and both Caddy and dsh bind only to
+loopback/tailnet addresses. dsh's launch token is per-process and must be
+exchanged through the exact domain URL: `devenv tasks run dsh:open` prints
+that URL for the CURRENT process, every tailnet device (phone included)
+opens it once, and dsh then sets each browser's authority-bound session
+cookie. Tailnet membership is the outer access boundary, as requested.
 
 | URL | Served by | In this repo |
 |---|---|---|
-| `https://dsh.hbohlen.space` | system Caddy on tailnet `:443` → redirector for `/`, dsh otherwise | Caddy system config; dsh process is in this repo |
+| `https://dsh.hbohlen.space` | system Caddy on tailnet `:443` → dsh | Caddy system config; dsh process is in this repo |
 
 The old `dsh-dev.hbohlen.space` service and source checkout have been removed.
 
@@ -54,8 +50,7 @@ hostname on any port (measured in `api-request-trust.ts`).
 | dsh program | `modules/dsh.nix` — the pinned `llm.dsh`, under a pinned upstream Node |
 | dsh Web process | `modules/dsh.nix` (`processes.dsh-web`) |
 | Trusted authorities | `modules/dsh.nix`, from `host.tailnetName` per host (D50, ADR 0011) |
-| Phone entry redirector | `dsh/phone-entry.py`, loopback `127.0.0.1:3082`, managed by devenv; every fact arrives as argv from the `dsh.*` options (ADR 0011) |
-| System Caddy route | `/etc/caddy/Caddyfile` on contabo (outside this repo); routes tokenless root requests without a dsh cookie to `127.0.0.1:3082` |
+| System Caddy route | `/etc/caddy/Caddyfile` on contabo (outside this repo); proxies every `dsh.hbohlen.space` request to `127.0.0.1:3080` |
 | Declared home seed | `modules/dsh.nix` + `dsh/` (settings, profile overlay, plugin) |
 | Plugin source of truth | `dsh/plugins/remote-settings/` |
 | Launch flow and smoke test | `modules/dsh.nix` (`tasks."dsh:open"`, `tasks."dsh:smoke"`); the smoke test resolves the tailnet address from `host.tailnetIp` and every endpoint fact from the `dsh.*` options (D50, ADR 0011) |
@@ -64,25 +59,22 @@ hostname on any port (measured in `api-request-trust.ts`).
 ## Operate
 
 ```console
-# 1. Start the declared process set, including dsh and the phone redirector.
+# 1. Start the declared process set, including dsh.
 devenv up -d
 
-# 2. Optional: print a fresh token URL for desktop troubleshooting.
+# 2. Print the current token URL — the entry point for every device,
+#    phones included (it is the only way to exchange a launch token).
 devenv tasks run dsh:open
 #    -> https://dsh.hbohlen.space/?token=<43 chars>
 
-# 3. On a phone, bookmark https://dsh.hbohlen.space/ and open it directly.
-#    The redirector forwards the current token to dsh for its normal exchange.
-
-# 4. The whole chain, asserted
+# 3. The whole chain, asserted
 devenv tasks run dsh:smoke
 ```
 
 `dsh:smoke` asserts, in order: the process listens on `127.0.0.1:3080` and
-nowhere else; the redirector listens on `127.0.0.1:3082`; the site answers on
-`100.115.197.61:443`; a tokenless domain visit redirects to the current process
-token without exposing it in task output; that token exchanges through the
-domain (`303` + cookie); the served page carries the
+nowhere else; the site answers on `100.115.197.61:443`; the current
+process token exchanges through the domain (`303` + cookie); the served page
+carries the
 `dsh-remote-settings-shim`; `/api` refuses a cookieless caller (`401`) and
 accepts the domain cookie — which is the proof that the authority reaching dsh is
 the one the cookie was minted for.
@@ -96,48 +88,36 @@ declared process set from the repository root:
 devenv up -d
 ```
 
-The system Caddy route also requires the devenv-managed `dsh-phone-entry`
-process. While that process is down, the route cannot redirect phone entry.
+The token is per-process and dies with it. A bare
+`https://dsh.hbohlen.space/` visit with no token and no session cookie shows
+dsh's authentication-required page — that is the expected answer now the
+phone-entry redirector is gone; every device enters through a `dsh:open` URL.
+If a device still shows authentication-required after opening the URL, its
+stored cookie is stale: clear that browser's site cookies for
+`dsh.hbohlen.space` and open a fresh `dsh:open` URL.
 
-If a phone still shows the authentication-required message after the route
-starts working, clear that browser's site cookies for `dsh.hbohlen.space` and
-open the bare domain again. A stale cookie can prevent a new token exchange.
-
-If `https://dsh.hbohlen.space/` answers **503**, `dsh-phone-entry` is up but
-`$DSH_HOME/launch.url` is missing or holds no token — the redirector's only
-source (it never greps a log). That file is written by the declared
-`processes.dsh-web` start script from the server's own stdout, so the running
-dsh instance was not started through that path (or was started before the file
-was written). Restart it through the declaration to re-capture:
+If `dsh:open` reports the captured token no longer exchanges, the process
+restarted since the capture; `$DSH_HOME/launch.url` is written by the declared
+`processes.dsh-web` start script from the server's own stdout (it never greps a
+log), so restart through the declaration to re-capture:
 
 ```console
 $ devenv processes restart dsh-web
 ```
 
-The system Caddy `dsh` matcher is intentionally ordered with a more-specific
-entry matcher first:
+The system Caddy `dsh` route is:
 
 ```caddyfile
-@dshEntry {
-    host dsh.hbohlen.space
-    path /
-    not query token=*
-    not header_regexp Cookie dsh-auth-
-}
-handle @dshEntry {
-    reverse_proxy 127.0.0.1:3082
-}
 @dsh host dsh.hbohlen.space
 handle @dsh {
     reverse_proxy 127.0.0.1:3080
 }
 ```
 
-The redirect is an authentication bootstrap, not a second login: each tailnet
-device gets the same dsh token exchange and its own browser cookie. The token
-exists in a `Location` header during that exchange, so do not enable Caddy
-access logs that record response headers or expose redirect locations. The
-redirector suppresses its own request logging and binds only to loopback.
+The launch token travels in the request URL during the exchange
+(`/?token=…`), so do not enable Caddy access logs that record request URIs.
+Each tailnet device performs the same dsh token exchange and gets its own
+browser cookie.
 
 **The declared home needs credentials first.** `~/nix/dsh/.dsh` starts empty of
 model credentials, so Models lists no provider until the operator provisions

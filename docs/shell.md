@@ -190,7 +190,6 @@ process manager, and the ingress URLs answer only while they are up.
 | `caddy` | `100.115.197.61:9443`, `:9444` | the prototype ingress |
 | `hermes-dashboard` | `127.0.0.1:9119` | the dashboard upstream |
 | `dsh-web` | `127.0.0.1:3080` | the dsh Web UI upstream |
-| `dsh-phone-entry` | `127.0.0.1:3082` | the phone-entry redirector |
 
 ```console
 $ devenv up -d                    # start everything, in the background
@@ -208,10 +207,10 @@ and leaves dsh to the system Caddy, which owns the port-less name (D42, ADR
 runbook is [`docs/ingress.md`](./ingress.md).
 
 `dsh.hbohlen.space` is port-less. On this workstation the **system** Caddy serves
-it on the tailnet's `:443` and this repository declares only the upstream and the
-redirector; that route is outside this repo. On the promoted netcup host, which
+it on the tailnet's `:443` and this repository declares only the upstream; that
+route is outside this repo. On the promoted netcup host, which
 has no other Caddy, the route *is* declared — `modules/ingress.nix` renders the
-`@dshEntry` + `@dsh` matcher order behind `ingress.serveDsh` (D48, ADR 0008).
+`@dsh` route behind `ingress.serveDsh` (D48, ADR 0008).
 Full dsh runbook: [`docs/dsh-web-endpoint.md`](./dsh-web-endpoint.md).
 
 ## 7. The checks worth knowing

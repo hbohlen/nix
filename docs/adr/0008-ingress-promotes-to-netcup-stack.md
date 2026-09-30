@@ -46,6 +46,10 @@ port-less `dsh.hbohlen.space` route in matcher order — the `@dshEntry` matcher
 `docs/dsh-web-endpoint.md` records it. Copying only `modules/ingress.nix` would
 drop it and break phone entry.
 
+**SUPERSEDED IN PART 2026-09-30 by ADR 0012:** the phone-entry redirector is
+deleted and the matcher order with it — the promoted route is `@dsh`-only. The
+authority-bound cookie rule itself stands.
+
 ## Gaps this ADR does not close
 
 - The hermes **gateway** upstream (`127.0.0.1:8644` webhook, `8642` api_server) is

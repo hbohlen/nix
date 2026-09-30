@@ -26,7 +26,7 @@ While the shell Caddy coexists with the workstation's system `caddy.service`
 |---|---|---|
 | `hermes.hbohlen.space` | `:9443` → `127.0.0.1:9119` | — |
 | `hermes-gateway.hbohlen.space` | `:9444` → `:8644`, `/v1/*` → `:8642` | — |
-| `dsh.hbohlen.space` | upstream + phone redirector only | `:443` → the dsh route (D42) |
+| `dsh.hbohlen.space` | upstream only | `:443` → the dsh route (D42) |
 
 Both shell sites `bind` the tailnet address, so a non-tailnet client has no
 route to them. No firewall rule is added for that: the address itself is the
@@ -140,8 +140,8 @@ it cannot drift from the module.
 
 The promotion runs the **shell stack on netcup** — it does not grow netcup's
 NixOS declaration, which stays the irreducible six. Caddy then binds netcup's
-tailnet address on **port-less 443** and carries the `@dshEntry` + `@dsh` route
-in matcher order (the netcup profile already renders both; `caddy validate`
+tailnet address on **port-less 443** and carries the `@dsh` route (the netcup
+profile already renders both; `caddy validate`
 reports `Valid configuration`). DNS for the hermes and dsh names repoints from
 `100.115.197.61` to netcup, and the workstation's out-of-repo route retires.
 

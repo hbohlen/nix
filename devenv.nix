@@ -135,8 +135,8 @@
   # The same shell modules run on both machines, but the ingress differs: contabo
   # coexists with its system caddy.service on the high ports (D21) and does NOT
   # declare the port-less dsh route (its system Caddy owns it, D42); netcup has
-  # no other Caddy, so it owns port-less 443 and must carry the `@dshEntry` +
-  # `@dsh` route from docs/dsh-web-endpoint.md, or phone entry breaks.
+  # no other Caddy, so it owns port-less 443 and must carry the `@dsh` route
+  # from docs/dsh-web-endpoint.md.
   #
   # devenv selects a profile by the RUNNING hostname
   # (`profiles.hostname.<uname -n>.module`), so `devenv up` on either machine

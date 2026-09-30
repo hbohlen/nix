@@ -31,9 +31,9 @@
 #     served by that system Caddy (D42, ADR 0002's exception), so this
 #     Caddyfile declares NO dsh site here.
 #   * netcup has no other Caddy. This Caddy owns port-less 443 and therefore
-#     carries the port-less `@dshEntry` + `@dsh` route, in matcher order, per
-#     docs/dsh-web-endpoint.md — a promotion that copied only the Hermes sites
-#     would drop it and break phone entry (ticket 06's carry-forward).
+#     carries the port-less `@dsh` route per docs/dsh-web-endpoint.md — a
+#     promotion that copied only the Hermes sites would drop it (ticket 06's
+#     carry-forward).
 #
 # Both sites bind `${host.tailnetIp}` (tailscale0) ONLY: a non-tailnet client
 # has no route to that address, the research's ranked-first architecture. No
@@ -105,27 +105,12 @@ let
 
   # THE PROMOTED HOST'S ADDITION, per docs/dsh-web-endpoint.md. Every fact
   # comes from the dsh endpoint module's options (ADR 0011) — this file states
-  # only the routing shape. `@dshEntry` is the MORE SPECIFIC matcher (tokenless,
-  # cookie-less root) and MUST precede the catch-all `@dsh`: Caddy evaluates
-  # `handle` directives in order and they are mutually exclusive. The entry
-  # matcher sends only the phone's tokenless root to the loopback redirector
-  # (dsh.entryPort), which reads the current process's launch URL and redirects
-  # to the normal exchange; the token therefore exists only in a `Location`
-  # header during that exchange, so do not enable Caddy access logs that record
-  # response headers.
+  # only the routing shape: the whole site reverse-proxies to the loopback
+  # upstream. The launch token reaches the site in the URL query string
+  # (`/?token=…`), so do not enable Caddy access logs that record request URIs.
   dshSite = ''
     https://${dshCfg.publicName} {
       import tailnet_tls
-
-      @dshEntry {
-        host ${dshCfg.publicName}
-        path /
-        not query token=*
-        not header_regexp Cookie dsh-auth-
-      }
-      handle @dshEntry {
-        reverse_proxy 127.0.0.1:${toString dshCfg.entryPort}
-      }
 
       @dsh host ${dshCfg.publicName}
       handle @dsh {

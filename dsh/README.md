@@ -9,7 +9,6 @@ runtime state (sessions, settings, launch token, and ignored credentials) here.
 | `settings.yaml` | Provider and UI settings, seeded into a NEW `$DSH_HOME` once. No secret is in it: providers name their key by environment variable (`apiKeyEnv`). |
 | `plugins/remote-settings/` | The local plugin that makes Settings → Models usable from a non-loopback origin. This repository is its source of truth. |
 | `plugins/remote-settings/cordis.patch.yml` | The plugin's own bundle patch: it inserts `remote-settings-runtime` into the tree. |
-| `phone-entry.py` | Loopback-only redirector that makes the stable domain work as a phone bookmark by issuing dsh's current launch URL. |
 | `.dsh/` | Runtime home declared by the `dsh.home` option (default `<repo>/dsh/.dsh`, ADR 0011); intentionally git-ignored. |
 
 ## The OpenCode Go session header
@@ -64,11 +63,11 @@ store (ADR 0007).
 
 | Name | Port | Served by |
 |---|---|---|
-| `https://dsh.hbohlen.space` | 443 | system Caddy on the tailnet; tokenless `/` bootstraps through the loopback phone redirector, all other requests go to dsh on `127.0.0.1:3080` |
+| `https://dsh.hbohlen.space` | 443 | system Caddy on the tailnet → dsh on `127.0.0.1:3080` |
 
 The upstream is `127.0.0.1:3080`. dsh binds its auth cookie to the browser-facing
 `hostname:port`, so launch tokens must be exchanged through the exact domain URL
-shown by `devenv tasks run dsh:open`. For phones, bare-domain visits redirect
-to the current launch URL through the loopback-only helper; the system Caddy
-route and devenv process must both be running. `docs/dsh-web-endpoint.md` is the
+shown by `devenv tasks run dsh:open`. The token is per-process and dies with it,
+so every device opens a fresh URL from `dsh:open`; the bare domain cannot
+complete the exchange on its own. `docs/dsh-web-endpoint.md` is the
 runbook.

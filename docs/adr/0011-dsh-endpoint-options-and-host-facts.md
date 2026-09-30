@@ -1,5 +1,10 @@
 # 0011 — The dsh endpoint owns its facts as `dsh.*` options; host facts get their own module
 
+**SUPERSEDED IN PART 2026-09-30 by ADR 0012:** `dsh.entryPort` and its
+consumer `dsh/phone-entry.py` are deleted. The remaining interface
+(`dsh.port`, `dsh.home`, `dsh.publicName`), the host-facts seam, and the
+port-less derivation stand.
+
 Two seams that were in the wrong place move to where the consumers already
 stand. First: the measured facts of a host — its tailnet address and MagicDNS
 name — are declared as **`host.tailnetIp` / `host.tailnetName`** in

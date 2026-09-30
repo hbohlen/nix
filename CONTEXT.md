@@ -116,13 +116,11 @@ _Avoid_: reverse proxy (use it only for the Caddy process itself), tunnel
 **dsh endpoint**:
 The one ingress site served PORT-LESS, because the dsh session cookie is bound
 to `hostname:port`: the system Caddy on tailnet `:443` answers
-`dsh.hbohlen.space`, sending tokenless root visits through the loopback
-redirector (`dsh/phone-entry.py`) to the current launch token and proxying
-everything else to `127.0.0.1:3080`. Its facts — port, entry port, home,
-public name — are declared as `dsh.*` options in `modules/dsh.nix`, and every
-consumer interpolates them; no copy survives elsewhere in the tree. This repo
-declares the upstream and the redirector, not the system route; promotion to
-netcup moves both. (D42, ADR 0011)
+`dsh.hbohlen.space` and proxies every request to `127.0.0.1:3080`. Its facts —
+port, home, public name — are declared as `dsh.*` options in
+`modules/dsh.nix`, and every consumer interpolates them; no copy survives
+elsewhere in the tree. This repo declares the upstream, not the system route;
+promotion to netcup moves the route. (D42, ADR 0011)
 _Avoid_: dsh site on a high port (the `:9445` shape was removed)
 
 **Host profile**:
