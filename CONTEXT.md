@@ -118,17 +118,21 @@ The one ingress site served PORT-LESS, because the dsh session cookie is bound
 to `hostname:port`: the system Caddy on tailnet `:443` answers
 `dsh.hbohlen.space`, sending tokenless root visits through the loopback
 redirector (`dsh/phone-entry.py`) to the current launch token and proxying
-everything else to `127.0.0.1:3080`. This repo declares the upstream and the
-redirector, not the system route; promotion to netcup moves both. (D42)
+everything else to `127.0.0.1:3080`. Its facts — port, entry port, home,
+public name — are declared as `dsh.*` options in `modules/dsh.nix`, and every
+consumer interpolates them; no copy survives elsewhere in the tree. This repo
+declares the upstream and the redirector, not the system route; promotion to
+netcup moves both. (D42, ADR 0011)
 _Avoid_: dsh site on a high port (the `:9445` shape was removed)
 
 **Host profile**:
-The `profiles.hostname.<name>.module.ingress` block in `devenv.nix` that selects
-one host's ingress facts — its tailnet address and MagicDNS name, its HTTPS
-ports, and whether it owns the port-less dsh route. `contabo` is the 9443/9444
-prototype; `netcup` is port-less 443 plus the dsh route. devenv picks the block
-from the running hostname, so the same modules configure the right ingress with
-no flag and no local file. (D50)
+The `profiles.hostname.<name>.module` block in `devenv.nix` that selects one
+host's facts and behavior: the measured `host.tailnetIp` / `host.tailnetName`
+(`modules/host.nix`, ADR 0011) and the ingress decisions — HTTPS ports, and
+whether it owns the port-less dsh route (`ingress.*`). `contabo` is the
+9443/9444 prototype; `netcup` is port-less 443 plus the dsh route. devenv
+picks the block from the running hostname, so the same modules configure the
+right ingress with no flag and no local file. (D50)
 _Avoid_: per-machine config, environment
 
 ### Secrets

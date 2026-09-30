@@ -50,10 +50,12 @@ $ devenv eval ingress
 this on `contabo`, and is the fastest way to see which host profile is active:
 
 ```json
-{ "ingress": { "enable": true, "tailnetIp": "100.115.197.61",
-  "tailnetName": "contabo.worm-hue.ts.net", "dashboardPort": 9443,
+{ "ingress": { "enable": true, "dashboardPort": 9443,
   "gatewayPort": 9444, "serveDsh": false, "runGateway": false } }
 ```
+
+and `devenv eval host` prints the active profile's measured facts
+(`tailnetIp`, `tailnetName` — `modules/host.nix` since ADR 0011).
 
 Per-site checks that do not need the vault:
 
@@ -110,23 +112,25 @@ fails — so the process reads the vault item directly rather than through
 ## 6. One declaration, two hosts (D50)
 
 The same modules run on the workstation and on the promoted netcup host, so the
-host facts are **options**, `ingress.*`, and the values are selected by devenv's
+host facts are **options** and the values are selected by devenv's
 **host profiles** in [`devenv.nix`](../devenv.nix):
-`profiles.hostname.contabo.module.ingress` and `…netcup…`. devenv picks the
-block from the running hostname.
+`profiles.hostname.contabo.module` and `…netcup…`, each setting two
+namespaces — the measured facts `host.*` (`modules/host.nix`) and the ingress
+behavior `ingress.*`. devenv picks the block from the running hostname.
 
 | Option | `contabo` | `netcup` |
 |---|---|---|
-| `tailnetIp` | `100.115.197.61` | `100.95.168.15` |
-| `tailnetName` | `contabo.worm-hue.ts.net` | `nc.worm-hue.ts.net` |
-| `dashboardPort` / `gatewayPort` | `9443` / `9444` | `443` / `443` |
-| `serveDsh` | `false` (system Caddy owns it) | `true` (renders the dsh route) |
-| `runGateway` | `false` (hermes systemd service owns `:8644`) | `true` (declares `hermes gateway run`) |
+| `host.tailnetIp` | `100.115.197.61` | `100.95.168.15` |
+| `host.tailnetName` | `contabo.worm-hue.ts.net` | `nc.worm-hue.ts.net` |
+| `ingress.dashboardPort` / `gatewayPort` | `9443` / `9444` | `443` / `443` |
+| `ingress.serveDsh` | `false` (system Caddy owns it) | `true` (renders the dsh route) |
+| `ingress.runGateway` | `false` (hermes systemd service owns `:8644`) | `true` (declares `hermes gateway run`) |
 
 A host with no profile keeps `enable = false` and null facts, so the shell still
 evaluates on any machine with only the D3 prerequisites. `modules/dsh.nix`
-reads the same options: `tailnetName` becomes a `--trusted-host` entry and
-`tailnetIp` pins the dsh smoke test's `--resolve`.
+reads `host.tailnetName` as a `--trusted-host` entry and `host.tailnetIp` to
+pin the dsh smoke test's `--resolve`; the endpoint's own facts (ports, name,
+home) are `dsh.*` options interpolated everywhere they are needed (ADR 0011).
 
 Changing what a site serves means editing [`modules/ingress.nix`](../modules/ingress.nix);
 the Caddyfile is generated there (`pkgs.writeText`), never written to `/etc`, so

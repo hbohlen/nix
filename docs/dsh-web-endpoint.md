@@ -53,12 +53,12 @@ hostname on any port (measured in `api-request-trust.ts`).
 | Promoted ingress (netcup) | `modules/ingress.nix`, rendered on the host whose `ingress.serveDsh` is true (`profiles.hostname.netcup` in `devenv.nix`, D50) |
 | dsh program | `modules/dsh.nix` — the pinned `llm.dsh`, under a pinned upstream Node |
 | dsh Web process | `modules/dsh.nix` (`processes.dsh-web`) |
-| Trusted authorities | `modules/dsh.nix`, from `ingress.tailnetName` per host (D50) |
-| Phone entry redirector | `dsh/phone-entry.py`, loopback `127.0.0.1:3082`, managed by devenv |
+| Trusted authorities | `modules/dsh.nix`, from `host.tailnetName` per host (D50, ADR 0011) |
+| Phone entry redirector | `dsh/phone-entry.py`, loopback `127.0.0.1:3082`, managed by devenv; every fact arrives as argv from the `dsh.*` options (ADR 0011) |
 | System Caddy route | `/etc/caddy/Caddyfile` on contabo (outside this repo); routes tokenless root requests without a dsh cookie to `127.0.0.1:3082` |
 | Declared home seed | `modules/dsh.nix` + `dsh/` (settings, profile overlay, plugin) |
 | Plugin source of truth | `dsh/plugins/remote-settings/` |
-| Launch flow and smoke test | `modules/dsh.nix` (`tasks."dsh:open"`, `tasks."dsh:smoke"`); the smoke test resolves the tailnet address from `ingress.tailnetIp` (D50) |
+| Launch flow and smoke test | `modules/dsh.nix` (`tasks."dsh:open"`, `tasks."dsh:smoke"`); the smoke test resolves the tailnet address from `host.tailnetIp` and every endpoint fact from the `dsh.*` options (D50, ADR 0011) |
 | DNS record | Cloudflare, DNS-only, `dsh.hbohlen.space → 100.115.197.61` (repoints to netcup at ticket 08 step 4) |
 
 ## Operate

@@ -10,7 +10,7 @@ runtime state (sessions, settings, launch token, and ignored credentials) here.
 | `plugins/remote-settings/` | The local plugin that makes Settings → Models usable from a non-loopback origin. This repository is its source of truth. |
 | `plugins/remote-settings/cordis.patch.yml` | The plugin's own bundle patch: it inserts `remote-settings-runtime` into the tree. |
 | `phone-entry.py` | Loopback-only redirector that makes the stable domain work as a phone bookmark by issuing dsh's current launch URL. |
-| `.dsh/` | Runtime home selected by devenv (`DSH_HOME=$PWD/dsh/.dsh`); intentionally git-ignored. |
+| `.dsh/` | Runtime home declared by the `dsh.home` option (default `<repo>/dsh/.dsh`, ADR 0011); intentionally git-ignored. |
 
 ## The OpenCode Go session header
 
