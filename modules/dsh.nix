@@ -115,6 +115,49 @@ let
   # alone is not enough). The plugin source is tracked under ./dsh.
   plugin = ../dsh/plugins/remote-settings;
 
+  # THE OPENCODE-GO SESSION HEADER PLUGIN, PINNED FROM NPM. A THIRD-PARTY
+  # DEPENDENCY, AND WHY IT IS HERE.
+  #
+  # OpenCode's Go relay (opencode.ai/zen/go) has required a stable
+  # `x-opencode-session` header per conversation since 2026-09-05, for upstream
+  # routing and prompt-cache affinity. Measured 2026-09-30 against the
+  # operator's own key: the chat-completions route answers `400
+  # {"type":"MissingSessionID"}` without the header and `200` with it. The
+  # bundled client cannot supply it: `@earendil-works/pi-ai@0.85.1`'s
+  # `createClient` has no path that emits `x-opencode-session` (it sends
+  # `session_id` / `x-client-request-id` / `x-session-affinity`), and the
+  # `opencode-go` catalog entries do not switch session affinity on. The
+  # profile cannot either: `PiAiModelProfile` has no `headers` field, and
+  # `dsh-llm-pi-ai`'s completion compat gate classifies
+  # `sendSessionAffinityHeaders` and `sessionAffinityFormat` as `"withhold"`.
+  # So a profile edit cannot fix this, which is why a host plugin is declared.
+  #
+  # WHAT IT DOES, STATED PLAINLY BECAUSE IT IS A MEASURED COST: it listens on
+  # the `llm/stream` waterfall (present in the pinned dsh, `dsh-llm` line 2371)
+  # and drives each matching adapter stream inside an `AsyncLocalStorage` whose
+  # value a ONE-TIME `globalThis.fetch` PATCH reads to merge the header. It
+  # leaves non-OpenCode providers, and requests that already carry the header,
+  # untouched. This is the only mechanism available at 0.1.7-rc.2.
+  #
+  # WHY A FETCH AND NOT A RUNTIME `dsh plugin add`: `seedHome` re-asserts
+  # `profiles/web/package.json` from `profilePackageJson` at every start, so an
+  # installed package would be dropped from the bundle list on the next boot.
+  # Pin the tarball here and the wiring is a property of the tree. The tarball is
+  # unpacked rather than linked because a store path is read-only and a `.tgz` is
+  # not a package root; `seedHome` unpacks it where a pnpm install would have put
+  # it, and the bytes stay hash-pinned here.
+  #
+  # REMOVAL CONDITION: when upstream pi-ai ships `x-opencode-session` for the
+  # `opencode`/`opencode-go` routes (deepseek-harness#5495,
+  # earendil-works/pi#9230), delete `opencodeSessionTarball`, the unpack step in
+  # `seedHome`, its dependency, its bundle entry, and this comment.
+  opencodeSessionTarball = pkgs.fetchurl {
+    pname = "dsh-opencode-session";
+    version = "0.1.1";
+    url = "https://registry.npmjs.org/dsh-opencode-session/-/dsh-opencode-session-0.1.1.tgz";
+    sha256 = "1ygzpwy351jvjs9n7nvjzx61xvlrvhypg99jxf00ldsp3lqzk7ny";
+  };
+
   # THE PROFILE OVERLAY. Same shape as the measured live web profile, minus two
   # things: extra tool packages (`@deepseek-ai/dsh-tools`,
   # `dshmarket`), which need a pnpm install and a lockfile this module does not
@@ -122,14 +165,20 @@ let
   # `@deepseek-ai/dsh-web-app` are NOT dependencies — they ship with dsh and
   # resolve from the install anchor (measured in the pinned `loadProfile`).
   #
-  # The `link:` target is the plugin's store path, which is exactly what pnpm
-  # writes for a `link:` dependency — so no install step is needed and the
-  # profile is complete on first boot.
+  # The `link:` targets are the plugins' package roots, which is exactly what
+  # pnpm writes for a `link:` dependency — so no install step is needed and the
+  # profile is complete on first boot. `@hbohlen/remote-settings` is a source
+  # tree in this repository, so its link is the store path Nix already gives it;
+  # `dsh-opencode-session` arrives as a tarball and is unpacked by `seedHome`
+  # into the profile itself, so its link is the profile-local directory.
+  # Bundle order is layer order: dsh's own bundles first, then the two plugins,
+  # then the operator's patch layer (`cordis.patch.yml`, seeded once).
   profilePackageJson = pkgs.writeText "dsh-web-profile-package.json" (builtins.toJSON {
     name = "dsh-profile-web";
     private = true;
     dependencies = {
       "@hbohlen/remote-settings" = "link:${plugin}";
+      "dsh-opencode-session" = "link:./node_modules/dsh-opencode-session";
     };
     dsh = {
       profile = {
@@ -137,6 +186,7 @@ let
           "@deepseek-ai/dsh-base"
           "@deepseek-ai/dsh-web-app"
           "@hbohlen/remote-settings"
+          "dsh-opencode-session"
         ];
       };
     };
@@ -155,8 +205,11 @@ let
   # file deliberately:
   #
   #   profiles/web/package.json    — REPO-OWNED: the bundle list and the plugin
-  #                                  link. Re-asserted on every start.
+  #                                  links. Re-asserted on every start.
   #   node_modules/@hbohlen/remote-settings — REPO-OWNED symlink, refreshed.
+  #   node_modules/dsh-opencode-session     — REPO-OWNED package directory,
+  #                                  REPLACED from the pinned tarball on every
+  #                                  start (4 files; the tarball is the pin).
   #   profiles/web/cordis.patch.yml — SEEDED ONCE. dsh writes its imported
   #                                  settings into this layer on the first boot
   #                                  (measured: a seeded settings.yaml becomes
@@ -165,8 +218,19 @@ let
   #                                  would wipe the operator's settings at every
   #                                  start.
   #   settings.yaml                — SEEDED ONCE, and never after the import.
+  #
+  # The plugin is unpacked rather than linked because a store path is read-only
+  # and a `.tgz` is not a package root; both the bundle's `package.json` and its
+  # own `cordis.patch.yml` must sit under `node_modules/dsh-opencode-session`.
+  # REPLACING it every start (rather than only when absent) is deliberate: the
+  # version is declared here, so a bump must take effect on the next boot.
   seedHome = pkgs.writeShellScript "dsh-web-seed" ''
     set -euo pipefail
+
+    # The unpacked plugin's modes must not depend on the caller's umask (the
+    # launcher sets 077 for the launch-token file, and a store-extracted tree
+    # would otherwise land mode 0600).
+    umask 022
 
     home="''${DSH_HOME:?DSH_HOME must be set}"
     profile="$home/profiles/web"
@@ -180,6 +244,10 @@ let
       install -m 0644 ${../dsh/settings.yaml} "$home/settings.yaml"
     fi
     ln -sfn ${plugin} "$profile/node_modules/@hbohlen/remote-settings"
+    rm -rf "$profile/node_modules/dsh-opencode-session"
+    install -d -m 0755 "$profile/node_modules/dsh-opencode-session"
+    ${pkgs.gnutar}/bin/tar -xzf ${opencodeSessionTarball} \
+      --strip-components=1 -C "$profile/node_modules/dsh-opencode-session"
   '';
 
   # THE PROCESS. `--trusted-host` carries the authority the operator types; the

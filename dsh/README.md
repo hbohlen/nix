@@ -12,7 +12,27 @@ runtime state (sessions, settings, launch token, and ignored credentials) here.
 | `phone-entry.py` | Loopback-only redirector that makes the stable domain work as a phone bookmark by issuing dsh's current launch URL. |
 | `.dsh/` | Runtime home selected by devenv (`DSH_HOME=$PWD/dsh/.dsh`); intentionally git-ignored. |
 
-## Why the plugin is needed
+## The OpenCode Go session header
+
+`modules/dsh.nix` pins the community plugin `dsh-opencode-session` (MIT, from
+npm) as a profile bundle. Since 2026-09-05 OpenCode's Go relay
+(`opencode.ai/zen/go`) rejects a request without a stable
+`x-opencode-session` header — `400 MissingSessionID` — and the bundled client
+cannot send it: pi-ai 0.85.1 has no code path that emits that header, the
+`opencode-go` catalog entries do not enable session affinity, and a dsh profile
+cannot set the switch (`sendSessionAffinityHeaders` is withheld). OpenCode's own
+compatibility table lists DeepSeek Harness under "Known Problematic Clients" for
+this gap.
+
+The plugin listens on the `llm/stream` waterfall and, for the
+`opencode`/`opencode-go` routes only, drives the adapter stream inside an
+`AsyncLocalStorage` that a one-time `globalThis.fetch` patch reads to merge the
+header. That global patch is the cost of the only mechanism available at
+0.1.7-rc.2. **Remove the plugin when upstream pi-ai sends the header** —
+deepseek-harness#5495, earendil-works/pi#9230. The decision and its proofs are
+recorded in `.scratch/opencode-go-session/`.
+
+## Why the remote-settings plugin is needed
 
 The Web client decides whether the settings document is writable from its own
 page authority (`packages/client/connection/src/client/index.ts`): a page that is
