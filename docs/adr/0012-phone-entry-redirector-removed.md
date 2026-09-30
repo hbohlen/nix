@@ -40,10 +40,11 @@ allowed but should reopen this ADR rather than read as an omission someone
 
 ## Consequences
 
-- contabo's out-of-repo `/etc/caddy/Caddyfile` still carries the `@dshEntry`
-  handle pointing at a now-dead upstream: retiring it is an operator step,
-  the same class as the promotion steps. Until it is removed, tokenless root
-  visits 502 on contabo; token URLs are unaffected.
+- contabo's out-of-repo `/etc/caddy/Caddyfile` carried the `@dshEntry` handle
+  pointing at the now-dead upstream. **Retired 2026-09-30**: the wildcard
+  site's `@dsh` handle is the dsh route now, and a tokenless root visit
+  measures `401` from dsh itself (the old chain would have 502'd). The
+  pre-change copy is kept at `/etc/caddy/Caddyfile.pre-adr0012.bak`.
 - Bookmark semantics change: after every `dsh-web` restart, each device needs
   a fresh `dsh:open` URL. This is accepted, and it is what the sentence "the
   launch URL is the only door" means.
