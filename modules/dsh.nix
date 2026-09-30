@@ -55,15 +55,15 @@ let
 
   # THE TRUSTED AUTHORITIES ARE A HOST FACT (ticket 08 step 2). The public name
   # `dsh.hbohlen.space` is the same on both machines and is always trusted. This
-  # host's MagicDNS name comes from `ingress.tailnetName`, which devenv's
-  # hostname profiles set (devenv.nix): contabo gets `contabo.worm-hue.ts.net`,
-  # netcup gets `nc.worm-hue.ts.net`. A PORT-LESS entry matches the hostname on
-  # ANY port (fact 2 in the header), so the old explicit `:8443` companion entry
-  # was redundant — it lives on implicitly and is not duplicated per host. Null
-  # (no hostname profile) simply omits the tailnet entry; the public name still
-  # works.
+  # host's MagicDNS name comes from `host.tailnetName` (modules/host.nix), which
+  # devenv's hostname profiles set (devenv.nix): contabo gets
+  # `contabo.worm-hue.ts.net`, netcup gets `nc.worm-hue.ts.net`. A PORT-LESS
+  # entry matches the hostname on ANY port (fact 2 in the header), so the old
+  # explicit `:8443` companion entry was redundant — it lives on implicitly and
+  # is not duplicated per host. Null (no hostname profile) simply omits the
+  # tailnet entry; the public name still works.
   trustedHosts = [ "dsh.hbohlen.space" ]
-    ++ lib.optional (config.ingress.tailnetName != null) config.ingress.tailnetName;
+    ++ lib.optional (config.host.tailnetName != null) config.host.tailnetName;
   trustedHostArgs = lib.concatMapStringsSep " " (host: "--trusted-host ${host}") trustedHosts;
 
   # THE NODE PROBLEM, MEASURED 2026-09-29 — why this wrapper exists.
@@ -348,10 +348,10 @@ in
   # The smoke test the ticket asks for, on the model of `ingress:smoke`: it
   # checks the pieces that can be checked from inside the shell, and it fails
   # loudly rather than reporting a green chain it did not see. The tailnet
-  # address is `ingress.tailnetIp` (ticket 08 step 2), so the same assertion is
+  # address is `host.tailnetIp` (modules/host.nix), so the same assertion is
   # correct on contabo and on netcup; a host with no hostname profile (null
   # address) has no tailnet site to assert and drops the task.
-  tasks."dsh:smoke" = lib.mkIf (config.ingress.tailnetIp != null) {
+  tasks."dsh:smoke" = lib.mkIf (config.host.tailnetIp != null) {
     exec = ''
       set -euo pipefail
 
@@ -359,7 +359,7 @@ in
       # the local resolver: the point is the binding, and a cached A record must
       # not be able to turn a red chain green.
       site="https://dsh.hbohlen.space"
-      tailnet_ip="${config.ingress.tailnetIp}"
+      tailnet_ip="${config.host.tailnetIp}"
       resolve="--resolve dsh.hbohlen.space:443:$tailnet_ip"
       url_file="''${DSH_HOME:-$PWD/dsh/.dsh}/launch.url"
 

@@ -12,6 +12,7 @@
   # cosmetic — D2 is the reason this map exists, so the shell's contents are
   # kept in named groups that each record which decision put them there.
   imports = [
+    ./modules/host.nix # this host's measured tailnet facts, profile-selected (D50, ADR 0011)
     ./modules/tooling.nix # non-agent CLI tools, locked nixpkgs (D25)
     ./modules/languages.nix # runtimes, replacing mise (D14)
     ./modules/agents.nix # agent CLIs, pinned llm-agents input (D19, D25)
@@ -139,37 +140,46 @@
   # devenv selects a profile by the RUNNING hostname
   # (`profiles.hostname.<uname -n>.module`), so `devenv up` on either machine
   # renders the right Caddyfile and the right dsh `--trusted-host` list with no
-  # flag and no untracked local file to keep in sync. D13's "no profiles" was
-  # about toolset selection; a hostname profile that selects host facts is the
-  # mechanism it explicitly left room for ("re-introducing profiles later does
-  # not rewrite the file layout"). A host with no profile keeps the modules'
-  # false/null defaults and still evaluates — D3's portability property.
+  # flag and no untracked local file to keep in sync. Each block carries TWO
+  # namespaces: the measured facts of the host (`host.*`, modules/host.nix) and
+  # this host's ingress behavior (`ingress.*`, modules/ingress.nix). A host with
+  # no profile keeps the modules' false/null defaults and still evaluates —
+  # D3's portability property. (The decision is D50; the seam split is ADR 0011 —
+  # dsh and ingress consume `host.*` and never each other's option paths.)
   #
   # The addresses are measured facts, not conventions. `tailscale status`
   # reports contabo as 100.115.197.61 and netcup as 100.95.168.15. netcup's
   # MagicDNS name is `nc.worm-hue.ts.net`, not `netcup...`: the node name is
   # pinned to `--hostname=nc` in hosts/netcup/tailnet.nix, independently of
   # `networking.hostName = "netcup"`.
-  profiles.hostname.contabo.module.ingress = {
-    enable = true;
-    tailnetIp = "100.115.197.61";
-    tailnetName = "contabo.worm-hue.ts.net";
-    # dashboardPort/gatewayPort keep the module's 9443/9444 defaults, and
-    # serveDsh stays false: the system Caddy owns the port-less dsh route here.
+  profiles.hostname.contabo.module = {
+    host = {
+      tailnetIp = "100.115.197.61";
+      tailnetName = "contabo.worm-hue.ts.net";
+    };
+    ingress = {
+      enable = true;
+      # dashboardPort/gatewayPort keep the module's 9443/9444 defaults, and
+      # serveDsh stays false: the system Caddy owns the port-less dsh route here.
+    };
   };
 
-  profiles.hostname.netcup.module.ingress = {
-    enable = true;
-    tailnetIp = "100.95.168.15";
-    tailnetName = "nc.worm-hue.ts.net";
-    # Port-less 443 for both Hermes sites, and the dsh route this host owns.
-    dashboardPort = 443;
-    gatewayPort = 443;
-    serveDsh = true;
-    # The gateway upstream too: netcup has no hermes systemd service, so the
-    # promoted shell stack declares its own `hermes gateway run` (D48; ticket
-    # 08 step 3). On contabo this stays false — the hermes-managed user service
-    # already owns :8644.
-    runGateway = true;
+  profiles.hostname.netcup.module = {
+    host = {
+      tailnetIp = "100.95.168.15";
+      tailnetName = "nc.worm-hue.ts.net";
+    };
+    ingress = {
+      enable = true;
+      # Port-less 443 for both Hermes sites, and the dsh route this host owns.
+      dashboardPort = 443;
+      gatewayPort = 443;
+      serveDsh = true;
+      # The gateway upstream too: netcup has no hermes systemd service, so the
+      # promoted shell stack declares its own `hermes gateway run` (D48; ticket
+      # 08 step 3). On contabo this stays false — the hermes-managed user service
+      # already owns :8644.
+      runGateway = true;
+    };
   };
 }

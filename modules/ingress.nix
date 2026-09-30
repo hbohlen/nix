@@ -11,9 +11,11 @@
 #   contabo  100.115.197.61    contabo.worm-hue.ts.net   :9443 dashboard, :9444 gateway
 #   netcup   100.95.168.15     nc.worm-hue.ts.net        port-less :443, all three sites
 #
-# THE PER-HOST VALUES ARE `ingress.*` OPTIONS (declared at the bottom), and the
-# hostname PROFILES that set them live in devenv.nix:
-# `profiles.hostname.contabo.module.ingress` / `profiles.hostname.netcup…`.
+# THE PER-HOST VALUES SPLIT ACROSS TWO NAMESPACES (ADR 0011): the measured facts
+# are `host.tailnetIp` / `host.tailnetName` (modules/host.nix), the behavior is
+# `ingress.*` (declared at the bottom). The hostname PROFILES that set them both
+# live in devenv.nix: `profiles.hostname.contabo.module` /
+# `profiles.hostname.netcup…`.
 # devenv selects a hostname profile from the RUNNING hostname, so `devenv up`
 # configures the right Caddyfile with no flag and no untracked local file to
 # keep in sync. D13's "no profiles" was about toolset selection; a hostname
@@ -33,7 +35,7 @@
 #     docs/dsh-web-endpoint.md — a promotion that copied only the Hermes sites
 #     would drop it and break phone entry (ticket 06's carry-forward).
 #
-# Both sites bind `${ingress.tailnetIp}` (tailscale0) ONLY: a non-tailnet client
+# Both sites bind `${host.tailnetIp}` (tailscale0) ONLY: a non-tailnet client
 # has no route to that address, the research's ranked-first architecture. No
 # firewall change is made: on contabo the system Caddy already owns 443 and this
 # process adds no new broadly-bound listener.
@@ -82,6 +84,9 @@ let
   };
 
   cfg = config.ingress;
+
+  # The measured facts of THIS host — not ingress options since ADR 0011.
+  hostCfg = config.host;
 
   # A Caddy site address is PORT-LESS when the port is 443: `https://name`
   # already means :443, and the dsh cookie is authority-bound to the exact
@@ -137,7 +142,7 @@ let
       }
 
       (tailnet_tls) {
-        bind ${cfg.tailnetIp}
+        bind ${hostCfg.tailnetIp}
         tls {
           dns cloudflare {env.CF_API_TOKEN}
         }
@@ -177,24 +182,6 @@ in
 {
   options.ingress = {
     enable = lib.mkEnableOption "this host's shell Caddy ingress";
-
-    tailnetIp = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      description = ''
-        The tailscale address this host's Caddy binds. Null on a host with no
-        hostname profile; `enable` requires it.
-      '';
-    };
-
-    tailnetName = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      description = ''
-        This host's MagicDNS name. Added to dsh's `--trusted-host` when set; a
-        port-less entry matches the hostname on any port.
-      '';
-    };
 
     dashboardPort = lib.mkOption {
       type = lib.types.port;
@@ -242,8 +229,8 @@ in
       # or coerce a null address into a string.
       assertions = [
         {
-          assertion = !config.ingress.enable || config.ingress.tailnetIp != null;
-          message = "ingress.enable requires ingress.tailnetIp; set both in a profiles.hostname.<host>.module.ingress block in devenv.nix";
+          assertion = !config.ingress.enable || config.host.tailnetIp != null;
+          message = "ingress.enable requires host.tailnetIp; set both in a profiles.hostname.<host>.module block in devenv.nix";
         }
         {
           assertion = !config.ingress.runGateway || config.ingress.enable;
@@ -318,11 +305,11 @@ in
           set -euo pipefail
 
           for port in ${lib.concatStringsSep " " (map toString (lib.unique [ cfg.dashboardPort cfg.gatewayPort ]))}; do
-            test -n "$(ss -tln | grep ${cfg.tailnetIp}:$port)" || {
-              echo "ingress not listening on ${cfg.tailnetIp}:$port"; exit 1;
+            test -n "$(ss -tln | grep ${hostCfg.tailnetIp}:$port)" || {
+              echo "ingress not listening on ${hostCfg.tailnetIp}:$port"; exit 1;
             }
           done
-          echo "ingress smoke ok: ${cfg.tailnetIp} bound on ${lib.concatStringsSep ", " (map toString (lib.unique [ cfg.dashboardPort cfg.gatewayPort ]))}"
+          echo "ingress smoke ok: ${hostCfg.tailnetIp} bound on ${lib.concatStringsSep ", " (map toString (lib.unique [ cfg.dashboardPort cfg.gatewayPort ]))}"
         '';
       };
     })
