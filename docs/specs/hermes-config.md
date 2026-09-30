@@ -154,7 +154,7 @@ task). Per `docs/research/2026-09-29-devenv-machines-hm-local.md` §3.5.
 Manager): `loginctl enable-linger hbohlen`. Without it, systemd stops the
 user manager at logout, and the gateway service stops with it.
 
-## Secretspec integration (amended 2026-09-30 — ADR 0010 supersedes D45.1)
+## Secretspec integration (amended 2026-09-30 — ADR 0010 supersedes D45.1; ADR 0013 moves the provider to Doppler)
 
 `hermes/devenv.yaml` carries `secretspec.enable = false`. The original design
 here relied on D45.1's claim that `enable = true` is portable ("auto-falls
@@ -166,17 +166,22 @@ also never needed — nothing in the Nix evaluation may reference secret VALUES
 (ADR 0007), so `config.secretspec.secrets.*` was the wrong primitive from the
 start.
 
-The corrected shape: `hermes/secretspec.toml` declares the API-key secrets as
-per-vault-item refs, and ONE imperative step renders them into the gitignored
-file (run from `~/nix/hermes`; no enterShell hook):
+The corrected shape: `hermes/secretspec.toml` declares each API-key secret by its
+verbatim name (Doppler has no item/field addressing — ADR 0013), and ONE
+imperative step renders them into the gitignored file (run from `~/nix/hermes`;
+no enterShell hook):
 
 ```sh
 # render $HERMES_HOME/.env (ticket T-07; re-run whenever a key rotates)
-OP_SERVICE_ACCOUNT_TOKEN=$(cat ~/.config/op-sa-token) \
+DOPPLER_TOKEN=$(cat ~/.config/doppler-token) \
   SECRETSPEC_REASON="hermes: render HERMES_HOME/.env" \
   secretspec export --format dotenv > .hermes/.env
 chmod 0600 .hermes/.env
 ```
+
+The token prefix is belt-and-braces: `modules/shell.nix` already exports
+`DOPPLER_TOKEN` into the activation environment, and the explicit form is here so
+the step runs from a shell that never activated.
 
 Upstream then cats this file into `$HERMES_HOME/.env` at activation
 (`mkEnvScript`) and hermes re-reads it at every start (`load_hermes_dotenv`).

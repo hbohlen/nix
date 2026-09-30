@@ -20,7 +20,7 @@ The shell layer runs on a non-NixOS machine given only these four (D3, D17):
 | 1 | `nix` | builds and evaluates the layer |
 | 2 | `devenv` | activates the layer; the version pin is the profile install's job |
 | 3 | `tailscale` | the ingress binds the tailnet address |
-| 4 | `secretspec` | resolves the vault on the **machine** path (D45) |
+| 4 | `secretspec` | resolves the provider on the **machine** path (D45) |
 
 Nothing else is required, and that is an audited result, not an aspiration —
 ticket 07 proved it and D45 records the one real dependency it removed.
@@ -51,6 +51,16 @@ instead of fetching it. `--priority 6` keeps the standalone `secretspec` entry
 (prerequisite 4) authoritative for `bin/secretspec`, which the devenv package
 also bundles.
 
+**Prerequisite 4 has a version floor, and it is provider-shaped** (ADR 0013): the
+Doppler provider is SecretSpec 0.21+, while `nixpkgs` — the locked
+`devenv-nixpkgs/rolling` and this host's `<nixpkgs>` alike — still evaluates
+0.20.0. On this machine the durable copy is `cargo install secretspec --locked`,
+which lands 0.21.1 at `~/.cargo/bin/secretspec`. Against an existing copy it needs
+`--force`, and it fails *quietly* without it: the binary-conflict error is
+printed, nothing is installed, and the exit status still reads success through a
+pipe. An older `secretspec` does not fail loudly on the new URI — it simply does
+not know the scheme.
+
 ## 2. The login shell — zsh sets up, nu takes over
 
 Two shells, deliberately (D26):
@@ -65,15 +75,20 @@ Three blocks in `~/.zshrc` make that work. They are a workstation dotfile, not
 part of this repository — this section is what reproduces them on a new
 machine.
 
-**a. The token bootstrap, BEFORE the hook** (D39):
+**a. The provider-token bootstrap, BEFORE the hook** (D39, ADR 0013):
 
 ```zsh
+if [[ -z "${DOPPLER_TOKEN:-}" && -r "$HOME/.config/doppler-token" ]]; then
+  export DOPPLER_TOKEN="$(cat "$HOME/.config/doppler-token")"
+fi
 if [[ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" && -r "$HOME/.config/op-sa-token" ]]; then
   export OP_SERVICE_ACCOUNT_TOKEN="$(cat "$HOME/.config/op-sa-token")"
 fi
 ```
 
-See step 3 for why the order is not negotiable.
+`DOPPLER_TOKEN` is the credential SecretSpec's current provider reads;
+`OP_SERVICE_ACCOUNT_TOKEN` serves the `op` routes that are not SecretSpec. See
+step 3 for why the order stopped being load-bearing.
 
 **b. The hook, sourced from the profile's `devenv`** (D6, D38):
 
@@ -101,12 +116,18 @@ $ cat ~/.local/share/devenv/allowed
 **c. No `.envrc`, no direnv.** Auto-activation is the native hook (D6), and
 `direnv` is not a prerequisite.
 
-## 3. The token bootstrap, and why it comes first
+## 3. The provider-token bootstrap, and what it is no longer for
 
-`~/.config/op-sa-token` (0600) holds the 1Password service-account token. Its
-consumer on this path is `secretspec`, whose 1Password provider is a wrapper
-around the `op` binary — so the token cannot itself arrive through
-`secretspec`. That circularity is why the file stays the source (D36).
+`~/.config/doppler-token` (0600) holds the Doppler service token for project
+`devenv`, config `dev`. Its consumer is `secretspec`, whose Doppler provider
+talks to `api.doppler.com` over REST — and the token cannot itself arrive
+through `secretspec`, because it is what the provider needs to resolve anything,
+including itself. That circularity is a property of provider credentials, not of
+1Password, and it is why the file stays the source (D36, ADR 0013).
+
+`~/.config/op-sa-token` is still exported for the `op` routes SecretSpec does not
+cover: the 1Password SSH key and the ingress's `op read` of
+`CLOUDFLARE_API_TOKEN`.
 
 **Since ticket 07/D45 the shell does not resolve SecretSpec at all.**
 [`devenv.yaml`](../devenv.yaml) sets `secretspec.enable: false`, so `devenv shell` and
@@ -116,7 +137,13 @@ already-activated shell can run `secretspec run` or `devenv machines` without
 re-reading the file. [`modules/shell.nix`](../modules/shell.nix)'s `enterShell` re-exports it into the
 activation environment for exactly that reason.
 
-The vault is a **machine-path** concern. The `eval` and `machines` steps opt in
+**The order stopped being load-bearing when the integration went off.** While
+`secretspec.enable` was true, activation resolved the profile *before*
+`enterShell` ran, so a tokenless activation died at the provider gate — measured
+2026-09-28: `OnePassword authentication required`. That is history now, and the
+block stays above the hook so a later regression re-measures the same posture.
+
+The provider is a **machine-path** concern. The `eval` and `machines` steps opt in
 per invocation with `SECRETSPEC_PROVIDER=dev SECRETSPEC_PROFILE=default`, and a
 `SECRETSPEC_REASON` is mandatory (`require_reason = true` in
 [`secretspec.toml`](../secretspec.toml)). The deploy loop in
@@ -126,7 +153,8 @@ The value must never become a Nix `env` entry or a path literal: either would
 copy the secret into the world-readable store (ADR 0007).
 
 ```console
-$ ls -l ~/.config/op-sa-token
+$ ls -l ~/.config/doppler-token ~/.config/op-sa-token
+-rw------- 1 hbohlen hbohlen … /home/hbohlen/.config/doppler-token
 -rw------- 1 hbohlen hbohlen … /home/hbohlen/.config/op-sa-token
 ```
 
@@ -181,7 +209,8 @@ used).
 
 ## 6. The processes
 
-Four are declared. All are **session-scoped** (D15): they live as long as the
+Three are declared (ADR 0012 removed the fourth, the phone-entry redirector). All
+are **session-scoped** (D15): they live as long as the
 process manager, and the ingress URLs answer only while they are up.
 
 | Process | Listens | Serves |
@@ -221,17 +250,19 @@ $ devenv tasks run dsh:open        # prints the current token URL
 $ devenv tasks run dsh:smoke       # the whole dsh chain, asserted
 ```
 
-`ingress:smoke` needs the vault and the tailnet, so it is a task rather than
-part of `devenv test`.
+`ingress:smoke` needs `op` (the ingress reads `CLOUDFLARE_API_TOKEN` straight
+from the vault, outside SecretSpec — ADR 0013) and the tailnet, so it is a task
+rather than part of `devenv test`.
 
 The ingress has two known gaps, both recorded in
 [`modules/ingress.nix`](../modules/ingress.nix) and
 ticket 06 rather than silently worked around:
 
-- The gateway's **api_server** (`127.0.0.1:8642`) is absent, so
-  `hermes-gateway.hbohlen.space:9444/v1/*` answers 502. The webhook upstream
-  (`8644`) is up (re-measured 2026-09-30): `/` returns 404, not 502. The
-  api_server and the gateway config live in `~/.hermes`, outside this repo.
+- The gateway's two upstreams are both down, re-measured 2026-09-30 14:46 EDT:
+  nothing listens on `8644` or `8642`, so `hermes-gateway.hbohlen.space:9444`
+  answers 502 on `/` and on `/v1/*`. [`docs/ingress.md`](ingress.md) §5 holds the
+  cause, the `API_SERVER_KEY` guard, and the fact that hermes's config now lives
+  at `~/nix/hermes/.hermes` inside this repo rather than in `~/.hermes`.
 - `hermes.hbohlen.space` still A-records to the offline tailnet node
   `zepyhrus`; repointing it to `100.115.197.61` is a Cloudflare dashboard step,
   not code.
@@ -242,7 +273,9 @@ ticket 06 rather than silently worked around:
 |---|---|---|
 | `Failed to get attribute 'devenv.config.machinesMeta'` | the `devenv` on PATH predates 2.4.0 | reinstall the pinned CLI (step 1); `devenv --version` must report 2.4.0 |
 | `devenv: command not found` at the hook | the profile entry is missing | install the pinned CLI (step 1) |
-| `OnePassword authentication required` | a `machines`/`eval`/`secretspec` call without the token or reason | token from step 3; add `SECRETSPEC_REASON` |
+| `No Doppler token found … set DOPPLER_TOKEN` | a `machines`/`eval`/`secretspec` call without the provider credential | the token file from step 3 |
+| `Accessing secrets requires a reason` | the same calls without `SECRETSPEC_REASON` | add it; `devenv` forwards no reason flag of its own |
+| `OnePassword authentication required` | the 1Password-era wording of the missing-credential error — it means something is still resolving an `op` route | the op token from step 3, for the `op` consumers only |
 | `devenv test` fails with the processes up | the default dotfile guards live state | `--override-dotfile` (step 5) |
 | `nu` is a different version than declared | a profile `nushell` entry came back | remove it: `nix profile remove nushell` (D40) |
 | the shell does not activate on `cd` | the directory is not trusted | `devenv allow` inside `~/nix` |

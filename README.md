@@ -63,7 +63,7 @@ wayfinder chart for the current effort.
 
     # 2. commit and push (the deploy gate refuses an unpublished revision)
     git add -A && git commit -m "<action> | <subject>"
-    OP_SERVICE_ACCOUNT_TOKEN=$(cat ~/.config/op-sa-token) \
+    DOPPLER_TOKEN=$(cat ~/.config/doppler-token) \
       SECRETSPEC_REASON="push: <what changed>" \
       secretspec run -- git push origin main
 
@@ -93,9 +93,20 @@ declared machine target again.
 
 | what | where | used for |
 |---|---|---|
-| service-account token (read-only, 1Password `dev`) | `~/.config/op-sa-token`, 0600 (root's copy: `/root/.config/op-sa-token`) | SecretSpec resolution during `machines install` and `secretspec run`; runtime `op read` for `devenv up` |
+| Doppler service token (read-only, project `devenv` config `dev`) | `~/.config/doppler-token`, 0600 | SecretSpec resolution — `TS_AUTH_KEY` for `machines install`, `GH_TOKEN` for `secretspec run`. The provider talks REST, so no `doppler` binary is on this path |
+| service-account token (read-only, 1Password `dev`) | `~/.config/op-sa-token`, 0600 (root's copy: `/root/.config/op-sa-token`) | the `op` routes that are NOT SecretSpec: the 1Password SSH key and the ingress's runtime `op read` for `devenv up` (ADR 0013) |
 | loopback SSH key | `~/.ssh/id_ed25519-op-dev`, 0600 | authenticating as `root@localhost` for the deploy |
-| `GH_TOKEN` | vault only — `secretspec run -- git push` | GitHub, per invocation, never at rest (`~/.config/gh` does not exist) |
+| `GH_TOKEN` | Doppler only — `secretspec run -- git push` | GitHub, per invocation, never at rest (`~/.config/gh` does not exist) |
+
+Both token files are the same shape for the same reason: a provider's own
+credential cannot be resolved through that provider, so it is placed by hand and
+exported at shell start rather than declared in a manifest (ADR 0013). Neither is
+written by the deployment — `install.secrets` delivers the tailnet key and nothing
+else. **Measured on the live host 2026-09-30: `op-sa-token` is there,
+`doppler-token` is not**, so the loop's step 2 has to be run from the workstation
+until an operator copies a read-only token to the host (0600, `hbohlen`'s home).
+The host's own `secretspec` is 0.21.0 and clears the provider's floor, so the file
+is the only thing missing.
 
 Every command that resolves a SecretSpec value needs `SECRETSPEC_REASON`
 (`require_reason = true` in `secretspec.toml`). `devenv` forwards no reason flag
@@ -150,7 +161,7 @@ in place — but the boundary is no longer where it was.
                          tooling.nix     non-agent CLIs (locked nixpkgs)
                          languages.nix   runtimes replacing mise
                          agents.nix      agent CLIs (pinned llm-agents)
-                         shell.nix       nu, the token export, the smoke test
+                         shell.nix       nu, the provider-token exports, the smoke test
                          ingress.nix     prototype Caddy ingress
                          dsh.nix         the declared dsh Web instance
     hosts/netcup/      the NixOS configuration
@@ -168,7 +179,8 @@ in place — but the boundary is no longer where it was.
     docs/adr/          the decisions that are hard to reverse
     docs/research/     dated evidence reports
     docs/agents/       how the tracker, triage labels, and domain docs work
-    secretspec.toml    secret declarations; values live in the 1Password `dev` vault
+    secretspec.toml    secret declarations; values live in the Doppler project
+                       `devenv`, config `dev`
     CONTEXT.md         the glossary
 
 The issue tracker is `.scratch/` (untracked), not `docs/`: one effort per

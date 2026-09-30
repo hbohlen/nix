@@ -6,9 +6,11 @@
 # 2026-09-29). `secretspec.enable` is FALSE on purpose. D3 says the shell layer
 # must run with only the four prerequisites and nothing else; with the
 # integration on, `devenv shell`/`test` resolved the profile at activation and
-# died at the 1Password gate without a vault credential (measured: "OnePassword
-# authentication required"). With it off, a TOKENLESS `devenv test` is green,
-# and no shell tool needs a manifest secret. The vault is a MACHINE concern:
+# died at the provider gate without a credential (measured 2026-09-28 against the
+# then-current 1Password provider: "OnePassword authentication required"; the
+# Doppler provider that replaced it has its own gate and the same failure shape).
+# With it off, a TOKENLESS `devenv test` is green, and no shell tool needs a
+# manifest secret. The store is a MACHINE concern:
 # `install.secrets` puts the tailnet auth key on the host during
 # `machines install`, and the machines commands carry their own SecretSpec
 # options, so provider and profile are selected PER INVOCATION:
@@ -19,22 +21,30 @@
 # deploy loop uses the env form.) `provider` and `profile` are ALIASES matching
 # the [providers.*] and [profiles.*] entries in secretspec.toml, not URIs.
 # Local resolution is what streams the value to the target over authenticated
-# SSH; target execution would instead need the 1Password provider reachable from
-# the temporary kexec'd installer, a service-account token on a throwaway host.
+# SSH; target execution would instead need the provider reachable and its token
+# (`DOPPLER_TOKEN`, see modules/shell.nix) present on the temporary kexec'd
+# installer — a credential on a throwaway host, which is why it is not the design.
 #
 # ADD INPUTS BY HAND. `devenv inputs add` rewrites this file and drops every
 # comment in it (measured 2026-09-27).
 #
-# allow_unfree — REQUIRED BY THE HOST'S `op`, AND WHY IT IS DECLARED HERE.
-# The host's self-deploy module puts the 1Password CLI on the machine
-# (`pkgs._1password-cli`, mainProgram `op`), because SecretSpec's 1Password
-# provider is a wrapper around the `op` binary and resolves nothing without it.
-# That package is unfree, and a Machine module may NOT set `nixpkgs.config`:
-# devenv builds `pkgs` outside the module system and passes
-# `pkgs = inputs.nixpkgs.legacyPackages.<system>`, so writing nixpkgs.config in a
-# module fails eval with "Your system configures nixpkgs with an externally
-# created instance" — measured. This is the documented route. It is declared
-# rather than left to `NIXPKGS_ALLOW_UNFREE` in
+# allow_unfree — WHAT STILL NEEDS IT NOW THAT SECRETSPEC DOES NOT (ADR 0013).
+# This used to read "required by the host's `op`", because SecretSpec's 1Password
+# provider is a wrapper around the `op` binary and resolved nothing without it.
+# SecretSpec now resolves through Doppler's REST API, which needs no binary at
+# all, and hosts/netcup/self-deploy.nix has dropped the package from the machine
+# closure accordingly.
+#
+# It stays `true`, for a different reason: `op` is still in this project, just not
+# on a SecretSpec path. modules/tooling.nix declares `pkgs._1password-cli` in the
+# SHELL layer (and modules/shell.nix's enterTest asserts the binary is present),
+# and the ingress Caddy reads its Cloudflare token from the vault with an
+# interpolated `${pkgs._1password-cli}/bin/op` (modules/ingress.nix). Both are
+# unfree. A module may NOT set `nixpkgs.config`: devenv builds `pkgs` outside the
+# module system and passes `pkgs = inputs.nixpkgs.legacyPackages.<system>`, so
+# writing nixpkgs.config in a module fails eval with "Your system configures
+# nixpkgs with an externally created instance" — measured. This is the documented
+# route. It is declared rather than left to `NIXPKGS_ALLOW_UNFREE` in
 # an operator's environment, for the reason design D6 gives: an ambient setting
 # is missing whenever a script or another operator runs the command.
 allow_unfree: true
@@ -61,8 +71,8 @@ shell: nu
 # 'devenv.config.machinesMeta'`) into a version boundary.
 require_version: true
 
-# OFF, so the shell enters without the vault (D45). The machines commands turn
-# it on for themselves with the env vars documented above.
+# OFF, so the shell enters without a provider credential (D45). The machines
+# commands turn it on for themselves with the env vars documented above.
 secretspec:
   enable: false
 

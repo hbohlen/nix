@@ -130,11 +130,14 @@ _Avoid_: per-machine config, environment
 ### Secrets
 
 **Token file**:
-`~/.config/op-sa-token`, the source of `OP_SERVICE_ACCOUNT_TOKEN`. The shell
-rc exports it before the hook (the bootstrap), and the activation environment
-carries it into panes. It must not flow through `secretspec` — `secretspec`'s
-1Password provider is what needs it, so that route is circular. (D36, D39)
-_Avoid_: op token, SA token
+A 0600 file under `~/.config/` holding a secret provider's own credential —
+`doppler-token` for the SecretSpec path, `op-sa-token` for the provider
+SecretSpec no longer uses. The shell rc exports it before the hook (the
+bootstrap), and the activation environment carries it into panes. It must not
+flow through `secretspec`: the credential is what the provider needs in order to
+resolve anything, including itself, so that route is circular — a property of
+provider credentials, not of 1Password. (D36, D39, ADR 0013)
+_Avoid_: op token, SA token, service account file
 
 **Render**:
 Producing a runtime secret FILE from a `secretspec.toml` manifest with an
@@ -145,8 +148,8 @@ enters a Nix evaluation or the store. (D45, ADR 0007, ADR 0010)
 _Avoid_: inject, load, resolve-from-devenv
 
 **Resolution opt-in**:
-The per-invocation choice to let `machines`/`eval` commands contact the vault,
-via `SECRETSPEC_PROVIDER`/`SECRETSPEC_PROFILE` (+ `SECRETSPEC_REASON`). Never
+The per-invocation choice to let `machines`/`eval` commands contact the secret
+provider, via `SECRETSPEC_PROVIDER`/`SECRETSPEC_PROFILE` (+ `SECRETSPEC_REASON`). Never
 a standing config: `secretspec.enable` is false in every `devenv.yaml`,
 because with a manifest in the tree `enable: true` resolves the profile at
 every command load. (D45, ADR 0010)

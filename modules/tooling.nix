@@ -24,7 +24,9 @@
     jujutsu # `jj`
     # `op`. UNFREE — `allow_unfree: true` in devenv.yaml is what lets this
     # evaluate, and that file records why it is declared rather than left to an
-    # ambient NIXPKGS_ALLOW_UNFREE.
+    # ambient NIXPKGS_ALLOW_UNFREE. It is here for the `op` routes that are NOT
+    # SecretSpec — the 1Password SSH key and the ingress's `op read` — since the
+    # Doppler provider resolves over REST and needs no binary (ADR 0013).
     _1password-cli
 
     # ---- nix profile rows that become shell rows (D12) --------------------
@@ -40,9 +42,9 @@
 
     # ---- credential helpers (D18 rule 2) ---------------------------------
     # `git-credential-secretspec` and `docker-credential-secretspec` earn a row
-    # because declared `git` needs the former to reach the 1Password vault.
-    # They ship WITH the `secretspec` prerequisite (D3, installed outside the
-    # shell), so there is no package to add here. Recorded so the row has a
+    # because declared `git` needs the former to reach the provider the manifest
+    # names. They ship WITH the `secretspec` prerequisite (D3, installed outside
+    # the shell), so there is no package to add here. Recorded so the row has a
     # reason rather than an omission.
   ];
 }

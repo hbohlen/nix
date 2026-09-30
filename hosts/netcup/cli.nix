@@ -45,7 +45,21 @@ in
 
   home.stateVersion = "26.11";
 
-  home.packages = [ pkgs.mosh ];
+  # `doppler` is OPERATOR CONVENIENCE, NOT A PRECONDITION (ADR 0013). SecretSpec's
+  # Doppler provider talks to `https://api.doppler.com` over REST — "No `doppler`
+  # CLI is required" — so removing this package cannot break resolution on this
+  # host. What it buys is the way to read the store by hand: the token dashboard,
+  # `doppler activity`, and creating or rotating a config-scoped service token
+  # without carrying a laptop through it.
+  #
+  # The token itself is NOT here. `~/.config/doppler-token` is placed by the
+  # operator, never by this role and never by SecretSpec: the provider's own
+  # credential cannot be resolved through that provider (the circularity the
+  # Token-file entry in CONTEXT.md records).
+  home.packages = [
+    pkgs.mosh
+    pkgs.doppler
+  ];
 
   programs.devenv = {
     enable = true;

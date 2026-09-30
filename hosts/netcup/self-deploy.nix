@@ -87,7 +87,7 @@
     "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
   ];
 
-  # git and the 1Password CLI, and nothing else.
+  # git, and nothing else.
   #
   # GIT: measured absent on the host 2026-09-27 (`command -v git` prints
   # nothing; so do `op`, `devenv` and `jq`), and the self-deploy loop needs it to
@@ -95,44 +95,48 @@
   # the host, and the drift check compares the host's revision against the pushed
   # one. jj is deliberately NOT added — building and deploying need git only.
   #
-  # `onepassword` IS REQUIRED BY DESIGN D3, AND IT IS NOT AN EXTRA. `devenv
-  # machines` resolves the whole SecretSpec profile on every invocation, and
-  # SecretSpec's 1Password provider is a WRAPPER AROUND THE `op` BINARY rather
-  # than an API client. Measured 2026-09-27 on the workstation by putting a
-  # sentinel `op` first on PATH and watching `machines info` invoke it:
+  # THE 1Password CLI USED TO BE DECLARED HERE. It is not anymore (ADR 0013), and
+  # the reason it was is worth keeping in full because it was measured, not
+  # assumed. Design D3 required the package because "SecretSpec's 1Password
+  # provider is a WRAPPER AROUND THE `op` BINARY rather than an API client",
+  # proven 2026-09-27 by putting a sentinel `op` first on PATH and watching
+  # `machines info` invoke it:
   #
   #   SHIM-SENTINEL: op was invoked with: vault list --format json
   #
-  # The pinned secretspec 0.21.0 also carries the literal string "OnePassword CLI
-  # (op) is not installed." plus an install hint, "NixOS: nix-env -iA
-  # nixpkgs.onepassword", which is this package. Without it the host cannot
-  # resolve TS_AUTH_KEY, so no `machines` command runs there at all: the
-  # credential at rest D3 places on the host is necessary but NOT sufficient, and
-  # this is the other half.
+  # SecretSpec's Doppler provider removes the premise, not just the preference:
+  # it "reads and writes secrets in a Doppler project over Doppler's REST API. No
+  # `doppler` CLI is required." A provider that shells out to a binary is the
+  # whole reason an unfree package sat in this host's closure, and dropping it
+  # also drops the `allow_unfree` pressure from the MACHINE layer (the shell layer
+  # still carries `op`, see below).
   #
-  # `SECRETSPEC_OPCLI_PATH` exists and could point at an `op` carried over from
-  # the workstation's store instead. Rejected for the same reason D6 rejects an
-  # ambient `NIX_CONFIG`: a variable naming a store path is missing whenever a
-  # script or another operator runs the command, and that path would not survive
-  # the host's own rebuild.
+  # WHAT STILL REACHES `op` ON THIS HOST, AND WHY NONE OF IT NEEDS THIS LIST.
+  # Two consumers, both measured rather than assumed:
   #
-  # THE ATTRIBUTE NAME IS MEASURED, NOT GUESSED. `pkgs.onepassword` — the name
-  # secretspec's own install hint prints — DOES NOT EXIST here, and neither does
-  # `pkgs._1password`: the pinned nixpkgs evaluates
-  # `error: attribute 'onepassword' missing`, and `pkgs._1password` is a `throw`
-  # ("has been renamed to/replaced by '_1password-cli'", converted 2025-10-27).
-  # The real attribute is `pkgs._1password-cli`, whose `mainProgram` is `op` and
-  # whose version is 2.39.0 — the same version the workstation runs.
+  # * the ingress Caddy, which reads the Cloudflare token straight from the vault
+  #   (modules/ingress.nix, `export CF_API_TOKEN="$(…op read
+  #   op://dev/CLOUDFLARE_API_TOKEN/token)"`). That script is generated with the
+  #   INTERPOLATED STORE PATH `${pkgs._1password-cli}/bin/op`, not a bare `op`, so
+  #   it does not consult PATH and never depended on this declaration — naming the
+  #   package here put a second, PATH-visible copy in the system closure for a
+  #   caller that already carries its own.
+  # * anything run through `devenv shell`/`devenv up` on the host, which gets `op`
+  #   from modules/tooling.nix's shell packages — and `modules/shell.nix`'s
+  #   enterTest asserts it is there. That is the layer that owns it: a shell tool
+  #   for a shell command.
   #
-  # It is UNFREE (`license = lib.licenses.unfree`), and a Machine module may not
-  # set `nixpkgs.config` — devenv builds `pkgs` outside the module system, so
-  # doing it here fails eval with "Your system configures nixpkgs with an
-  # externally created instance". The policy is declared in devenv.yaml
-  # (`allow_unfree: true`) instead, which is where this repository's convention
-  # puts it.
+  # So `op` remains reachable on this host by both routes that use it, and the
+  # only thing this removal can break is a bare `op` typed in a plain login
+  # shell — which is operator convenience, and `doppler` in the Home Manager role
+  # (./cli.nix) is the deliberate convenience for the store that now holds the
+  # SecretSpec values.
+  #
+  # The attribute name is recorded because it is not guessable: the package is
+  # `pkgs._1password-cli` (mainProgram `op`, 2.39.0). `pkgs.onepassword` does not
+  # exist in the pinned nixpkgs and `pkgs._1password` is a `throw`.
   environment.systemPackages = [
     pkgs.git
-    pkgs._1password-cli
   ];
 
   # THE CHECKOUT IS OPERATOR-OWNED, AND ROOT'S `git` HAS TO BE TOLD THAT IS

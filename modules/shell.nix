@@ -41,9 +41,12 @@ in
     # fifteen scripts are deleted (D33), so the export lives somewhere panes DO
     # inherit: the activation environment.
     #
-    # WHY THE FILE AND NOT SECRETSPEC: declaring this token as a secretspec
-    # secret would be circular — secretspec's 1Password provider calls `op`,
-    # which is what needs the token.
+    # WHY THE FILE AND NOT SECRETSPEC: declaring a provider token as a secretspec
+    # secret is circular whatever the store is — the credential is what the
+    # provider needs in order to resolve anything, including itself. Under 1Password
+    # the circularity had a second, mechanical form (the provider shells out to
+    # `op`, which is what needs the token); SecretSpec's Doppler provider is pure
+    # REST, so only the circularity is left. Either way: the file, not the manifest.
     #
     # D45 (ticket 07, 2026-09-29) REMOVED THE BOOTSTRAP REQUIREMENT. While
     # `secretspec.enable` was true, activation resolved the profile BEFORE
@@ -53,6 +56,16 @@ in
     # The integration is now OFF, a tokenless `devenv test` is green, and this
     # export is a CONVENIENCE: panes spawned from an activated shell can run
     # `secretspec run` or `devenv machines` without re-reading the file.
+    #
+    # BOTH FILES ARE EXPORTED, AND ONLY ONE OF THEM IS STILL A PROVIDER CREDENTIAL.
+    # DOPPLER_TOKEN backs [providers.dev] in both manifests since ADR 0013.
+    # OP_SERVICE_ACCOUNT_TOKEN no longer sits on any SecretSpec resolution path;
+    # it stays because `op` still serves consumers that are not SecretSpec — the
+    # ingress Caddy's Cloudflare token (modules/ingress.nix) and the 1Password SSH
+    # signing agent. Dropping it would break those for no gain.
+    if [ -z "''${DOPPLER_TOKEN:-}" ] && [ -r "$HOME/.config/doppler-token" ]; then
+      export DOPPLER_TOKEN="$(cat "$HOME/.config/doppler-token")"
+    fi
     if [ -z "''${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && [ -r "$HOME/.config/op-sa-token" ]; then
       export OP_SERVICE_ACCOUNT_TOKEN="$(cat "$HOME/.config/op-sa-token")"
     fi
