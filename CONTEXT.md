@@ -137,6 +137,22 @@ carries it into panes. It must not flow through `secretspec` — `secretspec`'s
 1Password provider is what needs it, so that route is circular. (D36, D39)
 _Avoid_: op token, SA token
 
+**Render**:
+Producing a runtime secret FILE from a `secretspec.toml` manifest with an
+imperative command (`secretspec export --format dotenv > $HERMES_HOME/.env`),
+outside the devenv integration. The word distinguishes it from resolution:
+devenv never resolves secrets for the shell layer, and no secret value ever
+enters a Nix evaluation or the store. (D45, ADR 0007, ADR 0010)
+_Avoid_: inject, load, resolve-from-devenv
+
+**Resolution opt-in**:
+The per-invocation choice to let `machines`/`eval` commands contact the vault,
+via `SECRETSPEC_PROVIDER`/`SECRETSPEC_PROFILE` (+ `SECRETSPEC_REASON`). Never
+a standing config: `secretspec.enable` is false in every `devenv.yaml`,
+because with a manifest in the tree `enable: true` resolves the profile at
+every command load. (D45, ADR 0010)
+_Avoid_: secretspec enabled globally, enable=true
+
 ### Docs and process
 
 **Runbook**:

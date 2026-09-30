@@ -1,0 +1,1 @@
+Learning pstack (agent routing framework). Has partial install (~20 skills) in ~/.agents/skills/. Prefers practical walkthroughs with real commands over abstract explanations.

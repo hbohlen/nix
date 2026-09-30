@@ -94,11 +94,15 @@ dies with a reason error that reads like a machine error. Measured
 2026-09-28: the push step above failed for exactly this reason until the reason
 was added.
 
-The SHELL does not resolve the profile at all (D45, ticket 07): `secretspec.enable`
-is false, so `devenv shell` / `devenv test` enter on the four D3 prerequisites
-alone, with neither the token nor the reason. Only the `machines` and `eval`
-steps opt in, with `SECRETSPEC_PROVIDER`/`SECRETSPEC_PROFILE`; that opt-in is
-what resolves `install.secrets` locally.
+The SHELL does not resolve the profile at all (D45, ticket 07; re-measured and
+hardened by ADR 0010): `secretspec.enable` is false in every `devenv.yaml` —
+root and sub-projects — because with a manifest in the tree, `enable: true`
+resolves the profile at EVERY command load and tokenless runs abort. So
+`devenv shell` / `devenv test` enter on the four D3 prerequisites alone, with
+neither the token nor the reason. Only the `machines` and `eval` steps opt in,
+with `SECRETSPEC_PROVIDER`/`SECRETSPEC_PROFILE`; that opt-in is what resolves
+`install.secrets` locally. Secret FILES for runtime tools render outside the
+CLI integration (`hermes/secretspec.toml` + `secretspec export`, ADR 0010).
 
 **The sudo boundary does not separate `hbohlen` from these secrets.** The key
 and the token sit in that user's home at 0600; anything running as `hbohlen`
@@ -144,6 +148,9 @@ in place — but the boundary is no longer where it was.
                          tailnet.nix     overlays, no firewall change
                          self-deploy.nix nix settings, caches, git, the loop record
     dsh/               the dsh Web instance's seed material and runtime home
+    hermes/            the hermes sub-project: its own devenv.{yaml,nix,lock},
+                       modules/ (HM module + settings), secretspec.toml,
+                       docs/ (SOUL.md, USER.md), .hermes/ = HERMES_HOME
     docs/              operator runbooks (shell.md, ingress.md, dsh-web-endpoint.md)
     docs/adr/          the decisions that are hard to reverse
     docs/research/     dated evidence reports

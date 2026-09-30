@@ -1,0 +1,87 @@
+# yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
+#
+# Inputs and SecretSpec configuration for the hermes-agent sub-project
+# (the workstation hermes tree at `~/nix/hermes/`).
+#
+# This is a SUB-PROJECT of the root devenv at `~/nix/devenv.{yaml,nix}`,
+# per the monorepo intent in `docs/specs/hermes-config.md`. It declares the
+# hermes-agent stack on the workstation via `machines.workstation.home-manager`
+# (no `target.host`) and is the source-of-truth that netcup will consume via
+# `inputs.workstation.devenv.config.outputs.hermes-config` once netcup parity
+# ships (separate spec, ticket 08 follow-on).
+#
+# ADD INPUTS BY HAND. `devenv inputs add` rewrites this file and drops every
+# comment in it (measured on the root project 2026-09-27).
+
+allow_unfree: true
+
+# nu as the project shell, matching the root project's choice (D26, D29). The
+# pinned devenv shell hook falls back to bash on an unsupported VALUE but not
+# on a missing BINARY, so the package is declared in `modules/hermes.nix`
+# rather than trusted to the fallback.
+shell: nu
+
+# The locked modules come from the devenv input; the binary the operator runs
+# is `../bin/devenv`, pinned to 2.4.0. They MUST agree — a bare `devenv` is
+# 2.2.2 on this host and has no `machines` subcommand (see root `devenv.yaml`).
+require_version: true
+
+# OFF — measured 2026-09-30, NOT a copy of the root project's stance. The
+# D45.1/ADR 0009 claim that `enable = true` is portable ("falls back to false
+# when no vault is available") is FALSE on devenv 2.4.0: the Rust CLI
+# resolves the profile at load whenever enable is true, and a tokenless run
+# dies at the provider gate (devenv/src/devenv/mod.rs resolve_secretspec_into
+# + main.rs SecretsNeedPrompting; full diagnosis:
+# docs/research/2026-09-30-secretspec-enable-not-portable.md). The readOnly
+# Nix-side default only reflects whether the CLI injected data — it cannot
+# rescue a failed resolution.
+#
+# With it off, every hermes command enters/evals/builds on the four D3
+# prerequisites alone. Nothing here needs secret VALUES at eval time: the
+# upstream module reads API keys from $HERMES_HOME/.env at RUNTIME
+# (moduleCommon.nix mkEnvScript), and the file is rendered imperatively by
+# `secretspec export` against hermes/secretspec.toml — ticket 07 + D-01.
+secretspec:
+  enable: false
+
+inputs:
+  nixpkgs:
+    url: github:cachix/devenv-nixpkgs/rolling
+
+  # Pinned to the same release tag as the binary at `../bin/devenv`. This
+  # sub-project uses its own `devenv.lock` (devenv.yaml inputs from a
+  # monorepo sibling do not share), but it MUST stay on the tag for the same
+  # reason as the root: the module source that defines `machines` and
+  # `machinesMeta` lives here, and a 2.4.0 binary against an older node fails
+  # with "Failed to get attribute 'devenv.config.machinesMeta'".
+  devenv:
+    url: github:cachix/devenv/v2.4.0?dir=src/modules
+
+  # The hermes-agent flake. Exposes `homeManagerModules.default` (used in
+  # `modules/hermes.nix`), `packages.<system>.default`, and a few devShell /
+  # checks outputs. Tier 2 platform per the upstream docs; the project pins
+  # to `main` and lets `devenv.lock` track it. Update by name only — bare
+  # `devenv update` moves both this and the `devenv:` input off their
+  # release tag.
+  hermes-agent:
+    url: github:NousResearch/hermes-agent
+    # `inputs.nixpkgs.follows` is REQUIRED — without it, a SECOND nixpkgs
+    # enters the closure graph and binary-cache misses hit for the
+    # hermes-agent derivation. The flat `follows: nixpkgs` form at the root
+    # level is wrong here too (same trap the root `disko:` input
+    # documents).
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
+
+  # The home-manager input that backs `machines.workstation.home-manager`.
+  # Even a home-manager-only machine requires this input — devenv's machines
+  # module asserts when ANY machine defines `home-manager` and the input is
+  # missing (R-03 / `src/modules/machines.nix:200-201`). The upstream
+  # `inputs.<...>.inputs.nixpkgs.follows: nixpkgs` form keeps home-manager
+  # on the same nixpkgs as the rest of this project.
+  home-manager:
+    url: github:nix-community/home-manager
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
