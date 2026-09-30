@@ -135,7 +135,7 @@ Activate locally:
 
 ```sh
 cd ~/nix/hermes
-./bin/devenv build machines.workstation.build.home-manager
+devenv build machines.workstation.build.home-manager
 ./result/activate                       # runs devenv's driver → upstream activate as hbohlen
 ```
 

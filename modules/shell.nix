@@ -103,14 +103,15 @@ in
   # line up:
   #   devenv-hook-nu | save --force ($nu.default-config-dir | path join autoload/devenv-hook.nu)
   #
-  # OPEN (fog item 24): whether `bin/devenv`'s install already puts that
+  # OPEN (fog item 24): whether the devenv package's install already puts that
   # directory on nushell's search path on this workstation. It is only
   # observable once the shell is realised, so it is not guessed at here.
   #
-  # D6: it calls the repo's OWN wrapper, not bare `devenv`. On this workstation
-  # bare `devenv` is the profile's 2.2.2, which has no `machines` and a
-  # different hook generator.
+  # D6: bare `devenv` is the pinned 2.4.0 CLI — the nix profile's on a
+  # workstation (`nix profile install nixpkgs#devenv`, measured 2026-09-30:
+  # `devenv --version` prints 2.4.0+b904dcb), Home Manager's on netcup. The
+  # `enterTest` above asserts that version.
   scripts.devenv-hook-nu.exec = ''
-    ${config.devenv.root}/bin/devenv hook nu
+    devenv hook nu
   '';
 }

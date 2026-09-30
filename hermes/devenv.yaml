@@ -22,8 +22,8 @@ allow_unfree: true
 shell: nu
 
 # The locked modules come from the devenv input; the binary the operator runs
-# is `../bin/devenv`, pinned to 2.4.0. They MUST agree — a bare `devenv` is
-# 2.2.2 on this host and has no `machines` subcommand (see root `devenv.yaml`).
+# is bare `devenv`, pinned to 2.4.0 by the nix profile / Home Manager. They
+# MUST agree (see root `devenv.yaml`).
 require_version: true
 
 # OFF — measured 2026-09-30, NOT a copy of the root project's stance. The
@@ -48,7 +48,7 @@ inputs:
   nixpkgs:
     url: github:cachix/devenv-nixpkgs/rolling
 
-  # Pinned to the same release tag as the binary at `../bin/devenv`. This
+  # Pinned to the same release tag as the CLI on PATH (2.4.0). This
   # sub-project uses its own `devenv.lock` (devenv.yaml inputs from a
   # monorepo sibling do not share), but it MUST stay on the tag for the same
   # reason as the root: the module source that defines `machines` and

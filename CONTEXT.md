@@ -57,12 +57,6 @@ An unmanaged copy on PATH that hijacks the declared one. The nix profile's
 nushell 0.113.1 beating the declared 0.115.1 was the worked case. (D6, D40)
 _Avoid_: stale binary
 
-**The wrapper**:
-`bin/devenv` in this repo, pinned to 2.4.0, which is the only version with
-`machines`. On the workstation, bare `devenv` is the profile's 2.2.2 and is
-always wrong inside this project. On netcup both names are 2.4.0. (D6)
-_Avoid_: pinned devenv
-
 **Source rule**:
 Per tool, not per class: agent CLIs come from the pinned `llm-agents` input,
 everything else from the locked nixpkgs, and `openspec` is the named exception

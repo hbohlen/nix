@@ -18,7 +18,7 @@ The shell layer runs on a non-NixOS machine given only these four (D3, D17):
 | # | Prerequisite | Why it cannot live in the layer |
 |---|---|---|
 | 1 | `nix` | builds and evaluates the layer |
-| 2 | `devenv` | activates the layer; the version pin is `bin/devenv`'s job |
+| 2 | `devenv` | activates the layer; the version pin is the profile install's job |
 | 3 | `tailscale` | the ingress binds the tailnet address |
 | 4 | `secretspec` | resolves the vault on the **machine** path (D45) |
 
@@ -29,25 +29,27 @@ ticket 07 proved it and D45 records the one real dependency it removed.
 $ for t in nix devenv tailscale secretspec; do command -v "$t"; done
 ```
 
-Expected: four paths. If `devenv` here is not 2.2.2 or older on a workstation,
-that is fine — inside the project `bin/devenv` (pinned 2.4.0) is authoritative,
-per step 2.
+Expected: four paths, and `devenv --version` reporting 2.4.0 — the CLI is
+pinned to the same release tag as the locked `devenv` input, and
+`require_version: true` enforces the agreement.
 
-**Build the pinned toolchain once, after cloning.** `bin/devenv` execs
-`.devenv-toolchain`, which is a gcroot and never tracked. Without it every
-`bin/devenv …` call stops with a rebuild instruction:
+**Install the pinned CLI once, per machine.** It is a nix profile entry on the
+workstation and a Home Manager role on netcup
+([`hosts/netcup/cli.nix`](../hosts/netcup/cli.nix)); no binary lives in this
+repository. On the workstation:
 
 ```console
-$ nix build 'github:cachix/devenv/v2.4.0#devenv' --out-link .devenv-toolchain \
+$ nix profile install 'github:cachix/devenv/v2.4.0#devenv' --priority 6 \
     --option extra-substituters https://devenv.cachix.org \
     --option extra-trusted-public-keys "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw="
-$ ./bin/devenv --version
+$ devenv --version
 devenv 2.4.0+b904dcb (x86_64-linux)
 ```
 
 The substituter flags matter: without them nix compiles devenv's Rust workspace
-instead of fetching it. Rebuild with the same command if the gcroot is
-collected.
+instead of fetching it. `--priority 6` keeps the standalone `secretspec` entry
+(prerequisite 4) authoritative for `bin/secretspec`, which the devenv package
+also bundles.
 
 ## 2. The login shell — zsh sets up, nu takes over
 
@@ -73,21 +75,18 @@ fi
 
 See step 3 for why the order is not negotiable.
 
-**b. `~/nix/bin` first on PATH, then the hook** (D6, D38):
+**b. The hook, sourced from the profile's `devenv`** (D6, D38):
 
 ```zsh
-if [[ -d "$HOME/nix/bin" ]]; then
-  path=("$HOME/nix/bin" ${path:#"$HOME/nix/bin"})
-  export PATH
+if command -v devenv >/dev/null 2>&1; then
   eval "$(devenv hook zsh)"
 fi
 ```
 
-Order matters twice: `~/nix/bin` goes **first** so bare `devenv` is the pinned
-2.4.0 instead of the global profile's older binary, and the hook is sourced
-**after** that because the hook shells out to `devenv`. The `zsh` hook, not the
-bash one — the hook protocol passes a shell hint that tells devenv which dialect
-to emit.
+The hook shells out to `devenv`, so it must come from the step-1 install — no
+PATH trickery remains, the profile (or netcup's Home Manager role) is the only
+`devenv`. The `zsh` hook, not the bash one — the hook protocol passes a shell
+hint that tells devenv which dialect to emit.
 
 Nothing auto-activates without trusting the directory. `devenv allow` records
 `~/nix` in `~/.local/share/devenv/allowed`; the hook stays quiet elsewhere by
@@ -151,7 +150,7 @@ Without the hook (a fresh machine, or a non-interactive caller), enter
 explicitly:
 
 ```console
-$ ./bin/devenv shell
+$ devenv shell
 ```
 
 ## 5. Check it
@@ -159,7 +158,7 @@ $ ./bin/devenv shell
 One command is the whole acceptance:
 
 ```console
-$ ./bin/devenv test --no-tui
+$ devenv test --no-tui
 …
   shell layer ok
 ✓ Tests passed :)
@@ -173,7 +172,7 @@ shell type is one devenv accepts. A failure names the missing tool.
 racily restarting them. Test in isolation instead of stopping your work:
 
 ```console
-$ ./bin/devenv test --override-dotfile --no-tui
+$ devenv test --override-dotfile --no-tui
 ```
 
 `--override-dotfile` uses a temporary `.devenv`, so it also proves the result
@@ -241,16 +240,15 @@ ticket 06 rather than silently worked around:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `Failed to get attribute 'devenv.config.machinesMeta'` | bare `devenv` is the old profile binary | use `./bin/devenv …`, or fix the PATH order in step 2b |
-| `bin/devenv: the pinned toolchain is missing` | `.devenv-toolchain` was collected | rebuild it (step 1) |
+| `Failed to get attribute 'devenv.config.machinesMeta'` | the `devenv` on PATH predates 2.4.0 | reinstall the pinned CLI (step 1); `devenv --version` must report 2.4.0 |
+| `devenv: command not found` at the hook | the profile entry is missing | install the pinned CLI (step 1) |
 | `OnePassword authentication required` | a `machines`/`eval`/`secretspec` call without the token or reason | token from step 3; add `SECRETSPEC_REASON` |
 | `devenv test` fails with the processes up | the default dotfile guards live state | `--override-dotfile` (step 5) |
 | `nu` is a different version than declared | a profile `nushell` entry came back | remove it: `nix profile remove nushell` (D40) |
 | the shell does not activate on `cd` | the directory is not trusted | `devenv allow` inside `~/nix` |
 
 **Never run bare `devenv update`.** It moves the pinned `devenv:` input off its
-release tag, away from the binary `bin/devenv` was built against. Update inputs
-by name.
+release tag, away from the CLI the profile installs. Update inputs by name.
 
 ## What is not in this runbook
 

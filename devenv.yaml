@@ -13,7 +13,7 @@
 # `machines install`, and the machines commands carry their own SecretSpec
 # options, so provider and profile are selected PER INVOCATION:
 #
-#   SECRETSPEC_PROVIDER=dev SECRETSPEC_PROFILE=default ./bin/devenv machines …
+#   SECRETSPEC_PROVIDER=dev SECRETSPEC_PROFILE=default devenv machines …
 #
 # (`--secretspec-provider/--secretspec-profile` are equivalent; README.md's
 # deploy loop uses the env form.) `provider` and `profile` are ALIASES matching
@@ -52,12 +52,13 @@ allow_unfree: true
 # trusting the fallback (Q3b).
 shell: nu
 
-# The running CLI and the locked modules must agree. The workstation's bare
-# `devenv` is 2.2.2 and has no `machines` subcommand; bin/devenv is 2.4.0 and
-# matches the locked `devenv` node. Making that a hard requirement turns the
-# wrong-binary failure from a late, confusing eval error
-# (`Failed to get attribute 'devenv.config.machinesMeta'`) into a version
-# boundary.
+# The running CLI and the locked modules must agree. Bare `devenv` is 2.4.0 —
+# the workstation's nix profile installs it (`nix profile install
+# nixpkgs#devenv`), Home Manager installs it on netcup
+# (hosts/netcup/cli.nix) — and it matches the locked `devenv` node. Making
+# that a hard requirement turns the wrong-binary failure from a late,
+# confusing eval error (`Failed to get attribute
+# 'devenv.config.machinesMeta'`) into a version boundary.
 require_version: true
 
 # OFF, so the shell enters without the vault (D45). The machines commands turn
@@ -69,7 +70,7 @@ inputs:
   nixpkgs:
     url: github:cachix/devenv-nixpkgs/rolling
 
-  # Pinned to the SAME commit as the binary in bin/devenv. The module source
+  # Pinned to the SAME release tag as the `devenv` CLI on PATH (2.4.0). The module source
   # that defines `machines`/`machinesMeta` comes from this lock node, not from
   # the binary, and the two must agree: the 2.4.0 binary against an older locked
   # rev fails with "Failed to get attribute 'devenv.config.machinesMeta'", and

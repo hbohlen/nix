@@ -46,8 +46,8 @@
   #
   # WHY THIS IS NOT AN `--option extra-substituters` ANYMORE. Every previous
   # build of the pinned devenv on a machine without a cachix substituter
-  # compiled the whole Rust workspace from source. `bin/devenv` documents the
-  # per-invocation flags that fix that on the WORKSTATION, where `trusted-users`
+  # compiled the whole Rust workspace from source. Per-invocation
+  # `--option extra-substituters` flags fixed that on the WORKSTATION, where `trusted-users`
   # includes the operator. On THIS host `trusted-users = root`, and nix SILENTLY
   # DROPS a substituter an untrusted user supplies on the command line —
   # measured 2026-09-28: `sudo -n -u nobody … nix-store -r <bogus> --option
@@ -64,8 +64,9 @@
   #
   # `trusted-users` is deliberately NOT widened (self-deploy D5): that would be
   # a permanent privilege grant for what is a cache problem, and the operator's
-  # non-root builds only need to READ from the cache. The key is the same one
-  # bin/devenv documents.
+  # non-root builds only need to READ from the cache. The key is the
+  # `devenv.cachix.org` signing key, the same one that per-invocation
+  # workaround passed.
   #
   # THE SECOND CACHE, FOR THE AGENT TOOLING (design D3; `add-netcup-agent-tooling`).
   # `hermes-agent` and `herdr` are published ONLY to the Numtide cache — measured

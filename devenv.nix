@@ -4,8 +4,10 @@
 # `devenv machines install|deploy` for the host half. The workstation half lives
 # in ./modules/*.nix and is imported below, per D13.
 #
-# Use `bin/devenv` on the workstation, where the global CLI is 2.2.2 and lacks
-# `machines`. Home Manager installs the matching pinned CLI on Netcup.
+# Bare `devenv` is the entry point on both machines: the workstation's nix
+# profile installs the pinned 2.4.0 CLI (`nix profile install nixpkgs#devenv`),
+# and Home Manager installs the same CLI for hbohlen on Netcup
+# (hosts/netcup/cli.nix).
 {
   # THE WORKSTATION HALF, split per D13: one module per tool group, imported
   # here beside the Machine declaration that is the host half. The split is not
@@ -53,7 +55,7 @@
     # host targets `root@localhost`, and this declaration is what names the
     # client identity for it.
     #
-    # ONE PATH, BECAUSE THE PER-INVOCATION ESCAPE HATCH IS CLOSED. `bin/devenv
+    # ONE PATH, BECAUSE THE PER-INVOCATION ESCAPE HATCH IS CLOSED. `devenv
     # machines deploy --help` reports `-O, --option <OPTION:TYPE> <VALUE>` with
     # supported types `string, int, float, bool, path, pkg, pkgs` — none of them
     # replaces a string list, so `sshOpts` cannot be overridden per invocation.

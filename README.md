@@ -8,29 +8,31 @@ decisions behind it are `docs/adr/`.
 
 The host deploy loop runs on the host itself. The checkout lives at
 `/home/hbohlen/nix`, and everything — edit, eval, commit, push, deploy — happens
-there, as `hbohlen`. After the workstation's first post-install plan and apply,
-Home Manager puts the pinned `devenv` CLI on `hbohlen`'s PATH. Use the
-workstation's `./bin/devenv` for installation and that first plan/apply.
-`machines install` installs NixOS only.
+there, as `hbohlen`. Bare `devenv` is the pinned 2.4.0 CLI and runs everything,
+installation and every plan/apply included: the workstation's nix profile
+installs it (`nix profile install nixpkgs#devenv`), and Home Manager installs
+it on netcup (`hosts/netcup/cli.nix`). `machines install` installs NixOS only.
 
 ## Operator daily path
 
 On the workstation, `cd ~/nix` activates the shell layer by itself (the zsh
-hook, `~/nix/bin/devenv` pinned to 2.4.0). Inside the project shell you get nu,
+hook and the pinned `devenv` 2.4.0). Inside the project shell you get nu,
 the declared tools, and the ingress/dsh processes. **`docs/shell.md` is the
 runbook**: the four prerequisites, the login-shell setup, the token bootstrap
 order, first entry, and the checks.
 
 ```console
 $ cd ~/nix
-$ ./bin/devenv test --no-tui      # shell layer ok / Tests passed :)
+$ devenv test --no-tui      # shell layer ok / Tests passed :)
 ```
 
-`bin/verify` re-measures the facts the comments record. It runs a Nix syntax
-sweep over the tracked Nix files, `devenv test`, `ingress:smoke`, and
-`dsh:smoke`. It stops at the first failing check and prints which checks passed
-before that failure. To include the two smoke tasks as well, run `bin/verify`
-in place of `./bin/devenv test`.
+To re-measure the facts the comments record for the ingress and the dsh
+endpoint, run the two smoke tasks (`docs/shell.md` §7 has the full check list):
+
+```console
+$ devenv tasks run ingress:smoke
+$ devenv tasks run dsh:smoke
+```
 
 ## How the docs are organized
 
@@ -167,8 +169,6 @@ in place — but the boundary is no longer where it was.
     docs/research/     dated evidence reports
     docs/agents/       how the tracker, triage labels, and domain docs work
     secretspec.toml    secret declarations; values live in the 1Password `dev` vault
-    bin/devenv         pinned devenv 2.4.0 (with its cachix substituter flags)
-    bin/verify         re-measures the facts the comments record
     CONTEXT.md         the glossary
 
 The issue tracker is `.scratch/` (untracked), not `docs/`: one effort per
