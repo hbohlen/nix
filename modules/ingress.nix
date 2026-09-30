@@ -88,6 +88,13 @@ let
   # The measured facts of THIS host — not ingress options since ADR 0011.
   hostCfg = config.host;
 
+  # The dsh endpoint's declared facts (modules/dsh.nix). Read ONLY when
+  # `serveDsh` renders the site — a host that serves dsh without the dsh
+  # module imported fails eval on this read, which is guard enough (ADR 0011).
+  # The site line stays port-less HERE because serving a port would mint the
+  # wrong cookie authority — the invariant the dsh module asserts.
+  dshCfg = config.dsh;
+
   # A Caddy site address is PORT-LESS when the port is 443: `https://name`
   # already means :443, and the dsh cookie is authority-bound to the exact
   # `hostname:port` (D42). For the Hermes sites the difference is cosmetic; for
@@ -96,31 +103,33 @@ let
   siteAddress = host: port:
     if port == 443 then "https://${host}" else "https://${host}:${toString port}";
 
-  # THE PROMOTED HOST'S ADDITION, verbatim from docs/dsh-web-endpoint.md.
-  # `@dshEntry` is the MORE SPECIFIC matcher (tokenless, cookie-less root) and
-  # MUST precede the catch-all `@dsh`: Caddy evaluates `handle` directives in
-  # order and they are mutually exclusive. The entry matcher sends only the
-  # phone's tokenless root to the loopback redirector (127.0.0.1:3082), which
-  # reads the current process's launch URL and redirects to the normal exchange;
-  # the token therefore exists only in a `Location` header during that exchange,
-  # so do not enable Caddy access logs that record response headers.
+  # THE PROMOTED HOST'S ADDITION, per docs/dsh-web-endpoint.md. Every fact
+  # comes from the dsh endpoint module's options (ADR 0011) — this file states
+  # only the routing shape. `@dshEntry` is the MORE SPECIFIC matcher (tokenless,
+  # cookie-less root) and MUST precede the catch-all `@dsh`: Caddy evaluates
+  # `handle` directives in order and they are mutually exclusive. The entry
+  # matcher sends only the phone's tokenless root to the loopback redirector
+  # (dsh.entryPort), which reads the current process's launch URL and redirects
+  # to the normal exchange; the token therefore exists only in a `Location`
+  # header during that exchange, so do not enable Caddy access logs that record
+  # response headers.
   dshSite = ''
-    https://dsh.hbohlen.space {
+    https://${dshCfg.publicName} {
       import tailnet_tls
 
       @dshEntry {
-        host dsh.hbohlen.space
+        host ${dshCfg.publicName}
         path /
         not query token=*
         not header_regexp Cookie dsh-auth-
       }
       handle @dshEntry {
-        reverse_proxy 127.0.0.1:3082
+        reverse_proxy 127.0.0.1:${toString dshCfg.entryPort}
       }
 
-      @dsh host dsh.hbohlen.space
+      @dsh host ${dshCfg.publicName}
       handle @dsh {
-        reverse_proxy 127.0.0.1:3080
+        reverse_proxy 127.0.0.1:${toString dshCfg.port}
       }
     }
   '';

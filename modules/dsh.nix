@@ -53,16 +53,31 @@ let
   system = pkgs.stdenv.hostPlatform.system;
   dsh = inputs.llm-agents.packages.${system}.dsh;
 
-  # THE TRUSTED AUTHORITIES ARE A HOST FACT (ticket 08 step 2). The public name
-  # `dsh.hbohlen.space` is the same on both machines and is always trusted. This
-  # host's MagicDNS name comes from `host.tailnetName` (modules/host.nix), which
-  # devenv's hostname profiles set (devenv.nix): contabo gets
+  cfg = config.dsh;
+
+  # THE ENDPOINT FACTS, declared below as `dsh.*` options (ADR 0011). This let
+  # block derives what they imply; every consumer — the start script, the
+  # redirector's argv, dsh:open, dsh:smoke, and the ingress dshSite —
+  # interpolates these bindings instead of restating a literal. The one port
+  # that is NOT an option: the site's. The launch cookie is bound to the exact
+  # authority (`hostname:port`, fact 1 in the header), so the dsh endpoint is
+  # only ever served PORT-LESS on the https default, and `siteAddress` encodes
+  # that by construction. `sitePort = 443` is the single place that number is
+  # written; the assertion below refuses a name that smuggles a port or path.
+  urlFile = "${cfg.home}/launch.url";
+  siteAddress = "https://${cfg.publicName}";
+  sitePort = 443;
+  upstreamUrl = "http://127.0.0.1:${toString cfg.port}";
+
+  # THE TRUSTED AUTHORITIES (ticket 08 step 2). The public name is always
+  # trusted. This host's MagicDNS name is the host fact `host.tailnetName`
+  # (modules/host.nix), set by the hostname profiles: contabo gets
   # `contabo.worm-hue.ts.net`, netcup gets `nc.worm-hue.ts.net`. A PORT-LESS
   # entry matches the hostname on ANY port (fact 2 in the header), so the old
   # explicit `:8443` companion entry was redundant — it lives on implicitly and
   # is not duplicated per host. Null (no hostname profile) simply omits the
   # tailnet entry; the public name still works.
-  trustedHosts = [ "dsh.hbohlen.space" ]
+  trustedHosts = [ cfg.publicName ]
     ++ lib.optional (config.host.tailnetName != null) config.host.tailnetName;
   trustedHostArgs = lib.concatMapStringsSep " " (host: "--trusted-host ${host}") trustedHosts;
 
@@ -252,19 +267,21 @@ let
 
   # THE PROCESS. `--trusted-host` carries the authority the operator types; the
   # port-less public entry matches the browser-facing domain. The tailnet entry
-  # is this host's MagicDNS name, parameterized above (ticket 08 step 2), so the
-  # same declaration is correct on contabo and on netcup.
+  # is this host's MagicDNS name (`host.tailnetName`), so the same declaration
+  # is correct on contabo and on netcup.
   #
   # THE STDOUT CAPTURE IS THE LAUNCH FLOW'S ONLY SOURCE. dsh prints the token URL
   # once at startup and never writes it to disk; `awk` tees it to
-  # `$DSH_HOME/launch.url` (0600, rewritten at every start) while leaving stdout
-  # intact for the process manager's log. No journal grep, no previous process's
-  # token — the writer is the process itself (fact 3 above).
+  # `${urlFile}` (0600, rewritten at every start) while leaving stdout intact
+  # for the process manager's log. No journal grep, no previous process's token
+  # — the writer is the process itself (fact 3 above). The home, the port, and
+  # the capture path come from `dsh.*` — ADR 0011 deleted the runtime
+  # `DSH_HOME:-$PWD` fallback: relocating the home is a declaration edit.
   startDsh = pkgs.writeShellScript "dsh-web-declared" ''
     set -euo pipefail
 
-    export DSH_HOME="''${DSH_HOME:-$PWD/dsh/.dsh}"
-    url_file="$DSH_HOME/launch.url"
+    export DSH_HOME="${cfg.home}"
+    url_file="${urlFile}"
 
     ${seedHome}
 
@@ -273,12 +290,12 @@ let
 
     ${dshDeclared}/bin/dsh web \
       --host 127.0.0.1 \
-      --port 3080 \
+      --port ${toString cfg.port} \
       --no-open \
       ${trustedHostArgs} \
     | ${pkgs.gawk}/bin/awk -v f="$url_file" '
         { print; fflush() }
-        match($0, /http:\/\/127\.0\.0\.1:3080\/\?token=[A-Za-z0-9_-]+/) {
+        match($0, /http:\/\/127\.0\.0\.1:${toString cfg.port}\/\?token=[A-Za-z0-9_-]+/) {
           print substr($0, RSTART, RLENGTH) > f
           close(f)
           fflush()
@@ -288,13 +305,63 @@ let
 in
 
 {
+  # THE DSH ENDPOINT INTERFACE (ADR 0011). These options are the whole surface
+  # other modules and scripts may know: what the upstream binds, where the
+  # redirector listens, where the launch capture lives, what authority the
+  # browser types. Defaults are the measured values; nothing here is a host
+  # fact — both machines run the identical endpoint, only the Caddy in front
+  # differs. The trusted-host port-less rule, the cookie authority binding,
+  # seedHome and the plugin wiring stay INSIDE this module's implementation.
+  options.dsh = {
+    port = lib.mkOption {
+      type = lib.types.port;
+      default = 3080;
+      description = "The loopback port the declared dsh web instance binds.";
+    };
+
+    entryPort = lib.mkOption {
+      type = lib.types.port;
+      default = 3082;
+      description = "The loopback port of the phone-entry redirector.";
+    };
+
+    home = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.devenv.root}/dsh/.dsh";
+      description = ''
+        DSH_HOME of the declared instance, as an absolute path evaluated HERE —
+        the checkout lives at the same path on both machines. The launch capture
+        is `<home>/launch.url`. No runtime `DSH_HOME` fallback: relocating the
+        home means setting this option.
+      '';
+    };
+
+    publicName = lib.mkOption {
+      type = lib.types.str;
+      default = "dsh.hbohlen.space";
+      description = ''
+        The authority the operator types and the browser cookie is minted for.
+        A bare hostname, never a port or path — see the assertion below.
+      '';
+    };
+  };
+
+  # The cookie is hash(authority) (fact 1): a name carrying a port or path
+  # would mint a different authority than the site serves. Catch it at eval.
+  config.assertions = [
+    {
+      assertion = builtins.match ".*[:/].*" config.dsh.publicName == null;
+      message = "dsh.publicName must be a bare hostname (got ${config.dsh.publicName}): the dsh endpoint is served port-less because the auth cookie is bound to the exact authority";
+    }
+  ];
+
   # The declared entry point — the llm-agents package under the pinned upstream
   # Node, NOT `${dsh}/bin/dsh`: that bin cannot boot on this host (the measured
   # addon failure in the let block above), and putting it on PATH would shadow
   # the working `dsh` the operator has today.
-  packages = [ dshDeclared ];
+  config.packages = [ dshDeclared ];
 
-  processes.dsh-web = {
+  config.processes.dsh-web = {
     exec = "${startDsh}";
   };
 
@@ -302,21 +369,25 @@ in
   # reads dsh's mode-0600 current launch URL and redirects the phone to the
   # normal token exchange. It does not log requests or expose a listener beyond
   # loopback; tailnet reachability remains controlled by system Caddy's bind.
-  processes.dsh-phone-entry = {
+  # The endpoint facts arrive as argv (ADR 0011) — phone-entry.py holds none.
+  config.processes.dsh-phone-entry = {
     exec = ''
       exec ${pkgs.python3}/bin/python3 ${../dsh/phone-entry.py} \
-        "''${DSH_HOME:-$PWD/dsh/.dsh}/launch.url"
+        --token-file "${urlFile}" \
+        --entry-port ${toString cfg.entryPort} \
+        --upstream "${upstreamUrl}" \
+        --public-url "${siteAddress}"
     '';
   };
 
   # THE LAUNCH FLOW (ticket item 4). A stored URL is never a fallback: the token
   # dies with its process, so this task reads the CURRENT process's own capture
   # and proves the token still exchanges before printing a domain URL.
-  tasks."dsh:open" = {
+  config.tasks."dsh:open" = {
     exec = ''
       set -euo pipefail
 
-      url_file="''${DSH_HOME:-$PWD/dsh/.dsh}/launch.url"
+      url_file="${urlFile}"
       if [ ! -r "$url_file" ]; then
         echo "dsh:open: no launch URL captured yet — start the instance first:"
         echo "  devenv up dsh-web"
@@ -332,8 +403,8 @@ in
       # Prove the token is live against the loopback listener with the authority
       # the browser will use. 303 is the only accepted exchange shape.
       code="$(${pkgs.curl}/bin/curl -s -o /dev/null -w '%{http_code}' \
-        -H 'Host: dsh.hbohlen.space' \
-        "http://127.0.0.1:3080/?token=$token" || true)"
+        -H 'Host: ${cfg.publicName}' \
+        "${upstreamUrl}/?token=$token" || true)"
       if [ "$code" != "303" ]; then
         echo "dsh:open: the captured token no longer exchanges (HTTP $code)."
         echo "  The process restarted since it was captured — restart it and retry:"
@@ -341,7 +412,7 @@ in
         exit 1
       fi
 
-      echo "https://dsh.hbohlen.space/?token=$token"
+      echo "${siteAddress}/?token=$token"
     '';
   };
 
@@ -351,34 +422,36 @@ in
   # address is `host.tailnetIp` (modules/host.nix), so the same assertion is
   # correct on contabo and on netcup; a host with no hostname profile (null
   # address) has no tailnet site to assert and drops the task.
-  tasks."dsh:smoke" = lib.mkIf (config.host.tailnetIp != null) {
+  config.tasks."dsh:smoke" = lib.mkIf (config.host.tailnetIp != null) {
     exec = ''
       set -euo pipefail
 
       # The site under test, pinned to the tailnet address rather than left to
       # the local resolver: the point is the binding, and a cached A record must
-      # not be able to turn a red chain green.
-      site="https://dsh.hbohlen.space"
+      # not be able to turn a red chain green. Every value below interpolates
+      # the dsh.* options and host.tailnetIp — ADR 0011; no literal port or
+      # name survives in this task.
+      site="${siteAddress}"
       tailnet_ip="${config.host.tailnetIp}"
-      resolve="--resolve dsh.hbohlen.space:443:$tailnet_ip"
-      url_file="''${DSH_HOME:-$PWD/dsh/.dsh}/launch.url"
+      resolve="--resolve ${cfg.publicName}:${toString sitePort}:$tailnet_ip"
+      url_file="${urlFile}"
 
       # 1. the process is up and loopback-only
-      ${pkgs.iproute2}/bin/ss -tln | grep -q '127.0.0.1:3080' || {
-        echo "dsh:smoke: nothing listening on 127.0.0.1:3080"; exit 1;
+      ${pkgs.iproute2}/bin/ss -tln | grep -q '127.0.0.1:${toString cfg.port}' || {
+        echo "dsh:smoke: nothing listening on 127.0.0.1:${toString cfg.port}"; exit 1;
       }
-      ${pkgs.iproute2}/bin/ss -tln | grep -q '127.0.0.1:3082' || {
-        echo "dsh:smoke: phone-entry redirector is not listening on 127.0.0.1:3082"; exit 1;
+      ${pkgs.iproute2}/bin/ss -tln | grep -q '127.0.0.1:${toString cfg.entryPort}' || {
+        echo "dsh:smoke: phone-entry redirector is not listening on 127.0.0.1:${toString cfg.entryPort}"; exit 1;
       }
-      ${pkgs.iproute2}/bin/ss -tln | grep -q '0.0.0.0:3080' && {
+      ${pkgs.iproute2}/bin/ss -tln | grep -q '0.0.0.0:${toString cfg.port}' && {
         echo "dsh:smoke: dsh is listening on a non-loopback address"; exit 1;
       }
 
       # 2. the HTTPS site is bound on the tailnet address by the Caddy that owns
       #    the name: the system one on contabo, this repo's shell Caddy on the
       #    promoted netcup host.
-      ${pkgs.iproute2}/bin/ss -tln | grep -q "$tailnet_ip:443" || {
-        echo "dsh:smoke: Caddy is not bound on $tailnet_ip:443"; exit 1;
+      ${pkgs.iproute2}/bin/ss -tln | grep -q "$tailnet_ip:${toString sitePort}" || {
+        echo "dsh:smoke: Caddy is not bound on $tailnet_ip:${toString sitePort}"; exit 1;
       }
 
       # 3. The token comes from the same capture dsh:open reads, so there is no
