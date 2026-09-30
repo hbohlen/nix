@@ -34,7 +34,7 @@ decision still in force.
 |---|---|
 | `CONTEXT.md` | the glossary — the shared language, nothing else |
 | `docs/adr/` | the decisions that are hard to reverse |
-| `docs/` | operator runbooks: `shell.md`, `dsh-web-endpoint.md`, and (with ticket 08) `netcup.md` |
+| `docs/` | operator runbooks: `shell.md`, `ingress.md`, `dsh-web-endpoint.md`, and (with ticket 08) `netcup.md` |
 | `docs/research/` | dated evidence with verbatim upstream quotes, never aspirational |
 | `docs/agents/` | how this repo's tracker, triage labels, and domain docs work |
 
@@ -144,7 +144,7 @@ in place — but the boundary is no longer where it was.
                          tailnet.nix     overlays, no firewall change
                          self-deploy.nix nix settings, caches, git, the loop record
     dsh/               the dsh Web instance's seed material and runtime home
-    docs/              operator runbooks (shell.md, dsh-web-endpoint.md)
+    docs/              operator runbooks (shell.md, ingress.md, dsh-web-endpoint.md)
     docs/adr/          the decisions that are hard to reverse
     docs/research/     dated evidence reports
     docs/agents/       how the tracker, triage labels, and domain docs work
