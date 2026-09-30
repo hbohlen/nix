@@ -229,8 +229,10 @@ The ingress has two known gaps, both recorded in
 [`modules/ingress.nix`](../modules/ingress.nix) and
 ticket 06 rather than silently worked around:
 
-- `hermes-gateway.hbohlen.space:9444` answers 502 until the webhook (8644) and
-  api_server (8642) adapters are enabled in `~/.hermes/config.yaml`.
+- The gateway's **api_server** (`127.0.0.1:8642`) is absent, so
+  `hermes-gateway.hbohlen.space:9444/v1/*` answers 502. The webhook upstream
+  (`8644`) is up (re-measured 2026-09-30): `/` returns 404, not 502. The
+  api_server and the gateway config live in `~/.hermes`, outside this repo.
 - `hermes.hbohlen.space` still A-records to the offline tailnet node
   `zepyhrus`; repointing it to `100.115.197.61` is a Cloudflare dashboard step,
   not code.

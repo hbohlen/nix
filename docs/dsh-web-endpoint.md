@@ -103,6 +103,17 @@ If a phone still shows the authentication-required message after the route
 starts working, clear that browser's site cookies for `dsh.hbohlen.space` and
 open the bare domain again. A stale cookie can prevent a new token exchange.
 
+If `https://dsh.hbohlen.space/` answers **503**, `dsh-phone-entry` is up but
+`$DSH_HOME/launch.url` is missing or holds no token — the redirector's only
+source (it never greps a log). That file is written by the declared
+`processes.dsh-web` start script from the server's own stdout, so the running
+dsh instance was not started through that path (or was started before the file
+was written). Restart it through the declaration to re-capture:
+
+```console
+$ devenv processes restart dsh-web
+```
+
 The system Caddy `dsh` matcher is intentionally ordered with a more-specific
 entry matcher first:
 

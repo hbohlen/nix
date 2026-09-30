@@ -52,13 +52,14 @@
 # requirement the netcup run adds is that the `op` service-account token exist
 # in netcup's environment where `devenv up` runs.
 #
-# KNOWN GAP, MEASURED 2026-09-29: nothing listens on 127.0.0.1:8644/8642 —
-# the running hermes-gateway.service has the webhook and api_server adapters
-# disabled in ~/.hermes/config.yaml. The gateway site answers 502 until those
-# adapters are enabled. Enabling them is a change to ~/.hermes, outside this
-# repo; recorded here and in the ticket, not silently done. ADR 0008 leaves the
-# gateway upstream undeclared; declaring it in this repo on netcup is ticket 08
-# step 3.
+# KNOWN GAP, RE-MEASURED 2026-09-30: the webhook upstream is now UP — something
+# answers on 0.0.0.0:8644, so 127.0.0.1:8644 returns 404 on `/` and the gateway
+# site's root is a 404, not the original 502. The api_server is still absent:
+# nothing listens on 127.0.0.1:8642, so `/v1/*` through the gateway site answers
+# 502. The api_server and the gateway's own config live in ~/.hermes, outside
+# this repo; recorded here and in the ticket, not silently worked around — and
+# not enabled from here. ADR 0008 leaves the gateway upstream undeclared;
+# declaring it in this repo on netcup is ticket 08 step 3.
 #
 # DNS: hermes-gateway.hbohlen.space already resolves through the wildcard.
 # hermes.hbohlen.space still carries an A record to the offline tailnet node
