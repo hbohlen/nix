@@ -11,6 +11,8 @@
 #   * secrets — nothing here may be secret. API keys reach hermes through
 #     environmentFiles -> $HERMES_HOME/.env (see modules/hermes.nix), never
 #     config.yaml, which is world-readable in the Nix store.
+#   * secrets.onepassword.binary_path, a machine path rather than a setting.
+#     Its reason is at section 2.37.
 #
 # Hyphenated model names under custom_providers MUST stay quoted (R-02 §8).
 {
@@ -441,12 +443,19 @@
   vault.bitwarden.enabled = true;
 
   # ── 2.37 secrets ───────────────────────────────────────────────────────
+  # `binary_path` is the one live key this file omits on purpose. Read in the
+  # pinned source (agent/secret_sources/onepassword.py, `find_op`): a pinned
+  # binary_path is used verbatim, and pinned-but-missing returns None rather
+  # than falling back to PATH. The live value `/usr/bin/op` is the
+  # workstation's, it does not exist on netcup, and the service PATH is
+  # `unitPath` only (nix/homeManagerModules.nix:138) with no /usr/bin. Unset,
+  # `find_op` takes `shutil.which("op")`, which finds the `op` that
+  # `services.hermes-agent.extraPackages` puts on that PATH (modules/hermes.nix).
   secrets.onepassword = {
     enabled = true;
     env = {
       NETCUP_CONSOLE_PASSWORD = "op://dev/NETCUP_CONSOLE/password";
     };
-    binary_path = "/usr/bin/op";
   };
 
   # ── 2.38 local_runtime ─────────────────────────────────────────────────

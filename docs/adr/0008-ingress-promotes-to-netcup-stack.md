@@ -1,13 +1,14 @@
-# 0008 — Ingress promotion moves the shell stack to netcup; the machine stays the six
+# 0008 — Ingress promotion moves the shell stack to netcup; the NixOS role stays the six
 
 At the D8 deploy the ingress stops being a workstation prototype by running the
 **shell layer on netcup**, not by growing netcup's NixOS declaration. The
 upstreams (hermes dashboard, the gateway adapters, dsh, the phone-entry
 redirector) and the Caddy that fronts them all run as devenv `process`es on
 netcup; Caddy binds the netcup tailnet address on port-less 443 and terminates
-TLS with DNS-01. netcup's Machine declaration therefore stays the irreducible
-six (research, `devenv-machines-minimal-layer.md`), because the ingress remains
-shell-declared per D2/D24 — the machine is only the host the shell runs on.
+TLS with DNS-01. The NixOS role stays the irreducible six (research,
+`devenv-machines-minimal-layer.md`), because the ingress remains shell-declared
+per D2/D24. D51 later adds a separate Home Manager role for the operator's
+pinned `devenv` CLI; it does not move the ingress or expand the NixOS role.
 DNS for `hermes*.hbohlen.space` and `dsh.hbohlen.space` repoints from the
 workstation's tailnet address (`100.115.197.61`) to netcup's, and the
 workstation's out-of-repo `/etc/caddy/Caddyfile` route retires.

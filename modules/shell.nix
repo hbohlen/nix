@@ -82,9 +82,6 @@ in
       exit 1
     }
 
-    # nu must be a shell devenv accepts, not merely a binary on PATH.
-    test "$(basename "$SHELL")" = "nu" -o -n "''${DEVENV_SHELL_TYPE:-}" || true
-
     echo "shell layer ok"
   '';
 

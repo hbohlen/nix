@@ -4,6 +4,9 @@
 > <https://devenv.sh/blog/2026/09/24/devenv-24-machines/>,
 > <https://devenv.sh/reference/options/#machines>, and
 > <https://github.com/cachix/devenv/blob/main/src/modules/machines.nix>.
+> The plan's Home Manager output and activation order were checked against the
+> pinned v2.4.0 CLI source at
+> <https://github.com/cachix/devenv/blob/v2.4.0/devenv/src/devenv/machines.rs>.
 > All decisive claims are quoted verbatim. Anything undocumented is marked `NOT DOCUMENTED`.
 
 ---
@@ -46,8 +49,8 @@ The prior research's claim that "HM is a second activation that NixOS rollback d
 | `machines build <name>` | Realizes all role outputs locally without deploying them. `devenv build machines.server.build.nixos` builds a single role. |
 | `machines install <name>` | Installs NixOS on a fresh host. **Wipes disks without a confirmation prompt and has no dry run.** Requires a machine name. Phases run in order: `kexec, facter, disko, install, reboot`. (<https://devenv.sh/machines/>) |
 | `machines deploy <name>` | Updates an existing system. With no names, selects all remote machines. |
-| `machines plan <name>` | Builds and records system, access facts, and closure deltas **without** copying/activating. Saves under `.devenv/machine-plans/<id>/`. `plan --json` exports portable plan. |
-| `machines apply plan-...` | Deploys a saved plan. **Refuses a stale plan.** Prepares all targets before activating any. |
+| `machines plan <name>` | Builds and records each role output, access facts, and closure deltas **without** copying or activating. This includes the Home Manager activation package. Saves under `.devenv/machine-plans/<id>/`. `plan --json` exports the plan. |
+| `machines apply plan-...` | Applies the saved role outputs, including Home Manager. **Refuses a stale plan.** Copies all outputs before activating any target. |
 | `machines status <name>` | Reports one of: `pending`, `rolled-back`, `rollback-failed`, `unknown`. Does not build. |
 | `machines rollback <name>` | Restores the previous recorded NixOS system. Blocks new deployments when the last result is `unknown`. |
 
@@ -206,7 +209,11 @@ The smallest set of things that **must** stay in a Machine declaration — nothi
 5. **`deploy.healthCheck`** — if the default `"true"` is too weak for your services, a custom check must live here. It is the only declarative rollback trigger.
 6. **`deploy.rollbackTimeout`** — if 300 s is too short for your boot/service-start sequence, it must be tuned here.
 
-Everything else — packages, dev tools, languages, editor config, dotfiles that aren't system-level, `devenv shell` profile — belongs in the shell layer, not the Machine.
+The NixOS role does not need packages, dev tools, languages, editor config, or
+dotfiles that are not system-level. Those belong in the shell layer. An optional
+Home Manager role can install a user-level CLI when the operator needs that
+command outside an entered shell. Netcup uses this exception for the pinned
+`devenv` CLI only; it does not expand the NixOS role.
 
 ---
 

@@ -120,10 +120,13 @@ let
     }
   '';
 
-  # THE SUCCESSOR CADDYFILE (D24, ADR 0002). Written to the shell's runtime
-  # dir, never to /etc and never into the store: it is generated here so it
-  # cannot drift from this module. The dsh site is appended only on the host
-  # that owns the port-less name (`ingress.serveDsh`).
+  # THE SUCCESSOR CADDYFILE (D24, ADR 0002). Generated here so it cannot drift
+  # from this module, and handed to caddy as the store path `writeText` returns,
+  # so it IS store content and world-readable like every store path. That is
+  # safe only because it holds no secret. The token is `{env.CF_API_TOKEN}`, a
+  # process-environment reference and never a literal (ADR 0007). It is never
+  # written to /etc. The dsh site is appended only on the host that owns the
+  # port-less name (`ingress.serveDsh`).
   caddyfileText =
     ''
       {
@@ -286,7 +289,7 @@ in
       # THE GATEWAY UPSTREAM (ticket 08 step 3). Only the host whose shell owns
       # the upstream declares it: on contabo the hermes-managed systemd user
       # service already binds :8644 and a second `gateway run` would collide;
-      # on netcup nothing else does (the home-manager role is gone, D49), so
+      # on netcup nothing else does (Home Manager carries only the CLI, D51), so
       # the promoted stack brings its own (D48).
       #
       # WHAT IT DOES NOT FIX, MEASURED 2026-09-30. The api_server adapter
@@ -312,6 +315,8 @@ in
       # de-duplicated.
       tasks."ingress:smoke" = {
         exec = ''
+          set -euo pipefail
+
           for port in ${lib.concatStringsSep " " (map toString (lib.unique [ cfg.dashboardPort cfg.gatewayPort ]))}; do
             test -n "$(ss -tln | grep ${cfg.tailnetIp}:$port)" || {
               echo "ingress not listening on ${cfg.tailnetIp}:$port"; exit 1;

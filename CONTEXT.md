@@ -11,9 +11,10 @@ term means here and which decision settled it. D-numbers point into
 ### Layering
 
 **Machine layer**:
-The six items a Machine declaration cannot shed: `target.host`, the `nixos`
-role, the `disko` input, the `install.*` block, `deploy.healthCheck`,
-`deploy.rollbackTimeout`. Everything else belongs to the shell layer. (D8, D17)
+Netcup's NixOS role needs six items: `target.host`, the `nixos` role, the
+`disko` input, the `install.*` block, `deploy.healthCheck`, and
+`deploy.rollbackTimeout`. A separate Home Manager role installs the operator's
+`devenv` CLI; other development tools stay in the shell layer. (D8, D17, D51)
 _Avoid_: irreducible six, server side, host config
 
 **Shell layer**:
@@ -75,8 +76,10 @@ partitions with disko, and enrolls the tailnet on first boot.
 _Avoid_: setup, bootstrap (bootstrap is reserved for the token file, below)
 
 **Deploy**:
-Every later update of netcup: `devenv machines deploy`, with health check and
-magic rollback. (D8)
+Every later update of netcup: run `devenv machines plan netcup`, review its
+outputs, then run `devenv machines apply plan-REPLACE_WITH_ID`. NixOS gets a
+health check and automatic rollback; the CLI-only Home Manager role does not.
+(D8, D51)
 
 **Promotion**:
 A shell-scoped prototype moving into netcup's machine layer, as part of the

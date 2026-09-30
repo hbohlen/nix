@@ -4,12 +4,8 @@
 # `devenv machines install|deploy` for the host half. The workstation half lives
 # in ./modules/*.nix and is imported below, per D13.
 #
-# Use `bin/devenv` (pinned 2.4.0), NEVER bare `devenv` — on a workstation.
-# The global profile binary there is 2.2.2 and has no `machines` subcommand.
-# Since ticket 08 there is no home-manager role on the host either, so the
-# host's CLI is this same `bin/devenv` script plus its `.devenv-toolchain`
-# (built with `nix build`, see bin/devenv's header): one entry point, both
-# machines.
+# Use `bin/devenv` on the workstation, where the global CLI is 2.2.2 and lacks
+# `machines`. Home Manager installs the matching pinned CLI on Netcup.
 {
   # THE WORKSTATION HALF, split per D13: one module per tool group, imported
   # here beside the Machine declaration that is the host half. The split is not
@@ -129,24 +125,7 @@
         networking.hostName = "netcup";
       };
 
-    # THE home-manager ROLE IS GONE (ticket 08, D48). It carried exactly
-    # `devenv`, `gh`, `hermes-agent` and `herdr` for the `hbohlen` account, plus
-    # `~/projects`. Each of those is now shell-layer or prerequisite work:
-    #
-    #   * `gh`, `hermes-agent` and `herdr` are declared in ./modules/ (tooling,
-    #     agents) and arrive when the shell is entered — the D9/D20 rule that
-    #     the shell is authoritative inside the project.
-    #   * `devenv` itself is the shell runner's prerequisite, and on the host it
-    #     is this repo's `bin/devenv` + `.devenv-toolchain` built with `nix`,
-    #     not a package a role installs (bin/devenv's header).
-    #   * `~/projects` was an operator convenience, not a machine property.
-    #
-    # Removing the role also removes the input it needed (devenv.yaml) and the
-    # no-rollback hazard hosts/netcup/operator.nix documented: with the role
-    # gone, a failed activation cannot leave a half-written user environment
-    # behind. The Machine keeps the irreducible six — target.host, the nixos
-    # role, disko, install.*, deploy.healthCheck, deploy.rollbackTimeout — and
-    # nothing else.
+    home-manager = import ./hosts/netcup/cli.nix;
   };
 
   # THE HOST FACTS THE SHELL MODULES PARAMETERIZE (ticket 08 step 2, D50).
@@ -187,10 +166,10 @@
     dashboardPort = 443;
     gatewayPort = 443;
     serveDsh = true;
-    # The gateway upstream too: netcup has no hermes systemd service (the
-    # home-manager role is gone, D49), so the promoted shell stack declares its
-    # own `hermes gateway run` (D48; ticket 08 step 3). On contabo this stays
-    # false — the hermes-managed user service already owns :8644.
+    # The gateway upstream too: netcup has no hermes systemd service, so the
+    # promoted shell stack declares its own `hermes gateway run` (D48; ticket
+    # 08 step 3). On contabo this stays false — the hermes-managed user service
+    # already owns :8644.
     runGateway = true;
   };
 }

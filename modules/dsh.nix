@@ -323,7 +323,7 @@ in
         exit 1
       fi
 
-      token="$(sed -n 's#.*token=\([A-Za-z0-9_-]*\)$#\1#p' "$url_file" | tail -1)"
+      token="$(sed -n 's#.*token=\([A-Za-z0-9_-]*\)$#\1#p' "$url_file" | tail -1 || true)"
       if [ -z "$token" ]; then
         echo "dsh:open: $url_file holds no token (read: $(cat "$url_file"))"
         exit 1
@@ -381,45 +381,46 @@ in
         echo "dsh:smoke: Caddy is not bound on $tailnet_ip:443"; exit 1;
       }
 
-      # 3. a fresh launch URL mints a cookie for the DOMAIN authority, and the
-      #    served page carries the remote-settings shim (the Models fix).
-      #    The token comes from the same capture dsh:open reads — no second
-      #    source, and no journal grep.
-      token="$(sed -n 's#.*token=\([A-Za-z0-9_-]*\)$#\1#p' "$url_file" | tail -1)"
+      # 3. The token comes from the same capture dsh:open reads, so there is no
+      #    second source and no journal grep.
+      token="$(sed -n 's#.*token=\([A-Za-z0-9_-]*\)$#\1#p' "$url_file" | tail -1 || true)"
       test -n "$token" || { echo "dsh:smoke: no launch token captured yet"; exit 1; }
 
-      # 3. a phone entering through the stable bare domain is redirected to
+      # 4. a phone entering through the stable bare domain is redirected to
       #    the current process token without exposing that token in task output.
       entry_location="$(${pkgs.curl}/bin/curl -s -o /dev/null -w '%{redirect_url}' \
-        $resolve "$site/")"
+        $resolve "$site/" || true)"
       test "$entry_location" = "$site/?token=$token" || {
         echo "dsh:smoke: bare domain did not redirect to the current dsh launch URL"; exit 1;
       }
 
+      # 5. a fresh launch URL mints a cookie for the DOMAIN authority, and the
+      #    served page carries the remote-settings shim (the Models fix).
       jar="$(mktemp)"
       trap 'rm -f "$jar"' EXIT
       code="$(${pkgs.curl}/bin/curl -s -o /dev/null -w '%{http_code}' -c "$jar" \
-        $resolve "$site/?token=$token")"
+        $resolve "$site/?token=$token" || true)"
       test "$code" = "303" || { echo "dsh:smoke: token exchange through the domain returned $code"; exit 1; }
 
-      page="$(${pkgs.curl}/bin/curl -s $resolve -b "$jar" "$site/")"
+      page="$(${pkgs.curl}/bin/curl -s $resolve -b "$jar" "$site/" || true)"
       case "$page" in
         *dsh-remote-settings-shim*) ;;
         *) echo "dsh:smoke: the served page carries no remote-settings shim"; exit 1 ;;
       esac
 
-      # 4. THE AUTHORITY REACHED dsh UNCHANGED, and the cookie is what admits
+      # 6. THE AUTHORITY REACHED dsh UNCHANGED, and the cookie is what admits
       #    the caller. Both halves matter: the cookie minted at THIS authority
       #    is accepted (not 401) only if the Host the app saw is the same
       #    authority, and the same route without a cookie is refused. A forged
       #    Host never gets this far — Caddy has no site for it and answers
       #    itself, so the fence is tested at the app, not at the edge.
-      no_cookie="$(${pkgs.curl}/bin/curl -s -o /dev/null -w '%{http_code}' --max-time 20 $resolve "$site/api")"
+      no_cookie="$(${pkgs.curl}/bin/curl -s -o /dev/null -w '%{http_code}' --max-time 20 $resolve "$site/api" || true)"
       test "$no_cookie" = "401" || {
-        echo "dsh:smoke: /api without a cookie returned $no_cookie, expected 401"; exit 1;
+        echo "dsh:smoke: /api without a cookie returned ''${no_cookie:-no answer}, expected 401"; exit 1;
       }
-      with_cookie="$(${pkgs.curl}/bin/curl -s -o /dev/null -w '%{http_code}' --max-time 20 $resolve -b "$jar" "$site/api")"
+      with_cookie="$(${pkgs.curl}/bin/curl -s -o /dev/null -w '%{http_code}' --max-time 20 $resolve -b "$jar" "$site/api" || true)"
       case "$with_cookie" in
+        "") echo "dsh:smoke: /api with a cookie did not answer"; exit 1 ;;
         401|403) echo "dsh:smoke: the domain cookie was refused on /api ($with_cookie) — the Host reaching dsh is not this authority"; exit 1 ;;
       esac
 

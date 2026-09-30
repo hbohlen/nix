@@ -8,7 +8,10 @@ decisions behind it are `docs/adr/`.
 
 The host deploy loop runs on the host itself. The checkout lives at
 `/home/hbohlen/nix`, and everything — edit, eval, commit, push, deploy — happens
-there, as `hbohlen`.
+there, as `hbohlen`. After the workstation's first post-install plan and apply,
+Home Manager puts the pinned `devenv` CLI on `hbohlen`'s PATH. Use the
+workstation's `./bin/devenv` for installation and that first plan/apply.
+`machines install` installs NixOS only.
 
 ## Operator daily path
 
@@ -22,6 +25,12 @@ order, first entry, and the checks.
 $ cd ~/nix
 $ ./bin/devenv test --no-tui      # shell layer ok / Tests passed :)
 ```
+
+`bin/verify` re-measures the facts the comments record. It runs a Nix syntax
+sweep over the tracked Nix files, `devenv test`, `ingress:smoke`, and
+`dsh:smoke`. It stops at the first failing check and prints which checks passed
+before that failure. To include the two smoke tasks as well, run `bin/verify`
+in place of `./bin/devenv test`.
 
 ## How the docs are organized
 
@@ -48,10 +57,7 @@ wayfinder chart for the current effort.
     <edit hosts/netcup/*.nix>
 
     # 1. eval: does it build, and what system path does it produce?
-    SECRETSPEC_REASON="iterate: eval" \
-      SECRETSPEC_PROVIDER=dev SECRETSPEC_PROFILE=default \
-      OP_SERVICE_ACCOUNT_TOKEN=$(cat ~/.config/op-sa-token) \
-      ./bin/devenv eval machines.netcup.build.nixos --no-tui
+    devenv eval machines.netcup.build.nixos --no-tui
 
     # 2. commit and push (the deploy gate refuses an unpublished revision)
     git add -A && git commit -m "<action> | <subject>"
@@ -63,46 +69,51 @@ wayfinder chart for the current effort.
     git status --porcelain                       # must print nothing
     test "$(git rev-parse HEAD)" = "$(git ls-remote origin refs/heads/main | cut -f1)"
 
-    # 4. deploy, then read the running system back
+    # 4. create and review a plan, then apply that exact plan
     export NIX_SSHOPTS="-i /home/hbohlen/.ssh/id_ed25519-op-dev -o IdentitiesOnly=yes"
-    export SECRETSPEC_REASON="self-deploy on the host: deploying its own declaration over the loopback"
-    export SECRETSPEC_PROVIDER=dev SECRETSPEC_PROFILE=default
-    ./bin/devenv machines deploy netcup \
-      -O machines.netcup.target.host:string root@localhost --no-tui --yes
-    ./bin/devenv machines status netcup \
+    devenv machines plan netcup \
+      -O machines.netcup.target.host:string root@localhost --no-tui
+    # Review the NixOS and Home Manager outputs and the root@localhost target.
+    # Replace the placeholder with the saved plan ID printed above.
+    devenv machines apply plan-REPLACE_WITH_ID --no-tui
+    devenv machines status netcup \
       -O machines.netcup.target.host:string root@localhost --no-tui
     readlink -f /run/current-system              # must equal the eval'd system path
 
 The declaration in `devenv.nix` names the **public** address as the target, so
 the same file still works for a deploy driven from another machine. The
-`-O machines.netcup.target.host:string root@localhost` override redirects that
-one invocation to the host's own loopback.
+`-O machines.netcup.target.host:string root@localhost` override on `machines
+plan` records the host's loopback as the plan target. `machines apply` uses that
+saved target. `machines status` still needs the override because it reads the
+declared machine target again.
 
 ## Credentials
 
 | what | where | used for |
 |---|---|---|
-| service-account token (read-only, 1Password `dev`) | `~/.config/op-sa-token`, 0600 (root's copy: `/root/.config/op-sa-token`) | every `devenv machines` / `eval` call; `secretspec run` |
+| service-account token (read-only, 1Password `dev`) | `~/.config/op-sa-token`, 0600 (root's copy: `/root/.config/op-sa-token`) | SecretSpec resolution during `machines install` and `secretspec run`; runtime `op read` for `devenv up` |
 | loopback SSH key | `~/.ssh/id_ed25519-op-dev`, 0600 | authenticating as `root@localhost` for the deploy |
 | `GH_TOKEN` | vault only — `secretspec run -- git push` | GitHub, per invocation, never at rest (`~/.config/gh` does not exist) |
 
-Every call that resolves the profile needs `SECRETSPEC_REASON` —
-`devenv machines`, `devenv eval` and `secretspec run` alike
+Every command that resolves a SecretSpec value needs `SECRETSPEC_REASON`
 (`require_reason = true` in `secretspec.toml`). `devenv` forwards no reason flag
-of its own, so the environment variable is the only route. Without it the call
-dies with a reason error that reads like a machine error. Measured
-2026-09-28: the push step above failed for exactly this reason until the reason
-was added.
+of its own, so the environment variable is the only route. With the integration
+disabled, plain `machines info`, `machines status`, and `eval` run tokenless.
+`machines install` resolves `TS_AUTH_KEY` for `install.secrets`. The documented
+`machines plan`/`apply` sequence reviews and applies role outputs; it does not
+write or refresh those install-time files. `secretspec run` resolves one-off
+secrets such as `GH_TOKEN` for the push step.
 
 The SHELL does not resolve the profile at all (D45, ticket 07; re-measured and
 hardened by ADR 0010): `secretspec.enable` is false in every `devenv.yaml` —
 root and sub-projects — because with a manifest in the tree, `enable: true`
 resolves the profile at EVERY command load and tokenless runs abort. So
 `devenv shell` / `devenv test` enter on the four D3 prerequisites alone, with
-neither the token nor the reason. Only the `machines` and `eval` steps opt in,
-with `SECRETSPEC_PROVIDER`/`SECRETSPEC_PROFILE`; that opt-in is what resolves
-`install.secrets` locally. Secret FILES for runtime tools render outside the
-CLI integration (`hermes/secretspec.toml` + `secretspec export`, ADR 0010).
+neither the token nor the reason. A fresh install selects the provider/profile
+for its local bootstrap resolution. Plan/apply do not write install-time
+bootstrap files. Secret FILES for runtime tools render outside the CLI
+integration (`hermes/secretspec.toml` +
+`secretspec export`, ADR 0010).
 
 **The sudo boundary does not separate `hbohlen` from these secrets.** The key
 and the token sit in that user's home at 0600; anything running as `hbohlen`
@@ -119,9 +130,8 @@ in place — but the boundary is no longer where it was.
   `machines status` reports `phase: rolled-back`, and the host keeps answering
   SSH. `devenv machines rollback` exists as a manual path but is not usually
   needed.
-* **Never run bare `devenv update`** — it moves the pinned `devenv:` input off
-  its release tag, away from the binary `bin/devenv` was built against. Update
-  inputs by name.
+* **Update inputs by name.** A bare `devenv update` moves the pinned `devenv:`
+  input off its release tag, away from the binary version this project uses.
 * **`/nix/store` is remounted read-write at boot** by
   `nix-store-remount-rw.service`. If a build fails with a read-only store, that
   unit is the first suspect, not nix.
@@ -132,7 +142,7 @@ in place — but the boundary is no longer where it was.
 ## Layout
 
     devenv.nix         the Machine declaration + the workstation `imports`
-    devenv.yaml        inputs (devenv v2.4.0, disko, llm-agents) + secretspec
+    devenv.yaml        inputs (devenv v2.4.0, disko, home-manager, llm-agents) + secretspec
     devenv.lock        the pins
     modules/           the shell layer, imported by devenv.nix
                          tooling.nix     non-agent CLIs (locked nixpkgs)
@@ -142,11 +152,12 @@ in place — but the boundary is no longer where it was.
                          ingress.nix     prototype Caddy ingress
                          dsh.nix         the declared dsh Web instance
     hosts/netcup/      the NixOS configuration
-                         default.nix     users, sshd, bootloader, assertions
-                         disko.nix       disk layout (source of every fileSystems entry)
-                         hardware.nix    the hand-written hardware facts
-                         tailnet.nix     overlays, no firewall change
-                         self-deploy.nix nix settings, caches, git, the loop record
+                          default.nix     users, sshd, bootloader, assertions
+                          disko.nix       disk layout (source of every fileSystems entry)
+                          hardware.nix    the hand-written hardware facts
+                          tailnet.nix     overlays, no firewall change
+                          self-deploy.nix nix settings, caches, git, the loop record
+                          cli.nix         Home Manager's pinned devenv CLI for hbohlen
     dsh/               the dsh Web instance's seed material and runtime home
     hermes/            the hermes sub-project: its own devenv.{yaml,nix,lock},
                        modules/ (HM module + settings), secretspec.toml,
@@ -157,6 +168,7 @@ in place — but the boundary is no longer where it was.
     docs/agents/       how the tracker, triage labels, and domain docs work
     secretspec.toml    secret declarations; values live in the 1Password `dev` vault
     bin/devenv         pinned devenv 2.4.0 (with its cachix substituter flags)
+    bin/verify         re-measures the facts the comments record
     CONTEXT.md         the glossary
 
 The issue tracker is `.scratch/` (untracked), not `docs/`: one effort per

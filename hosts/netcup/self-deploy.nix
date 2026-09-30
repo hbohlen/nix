@@ -56,9 +56,8 @@
   # as root contacted it and retried five times. `nix config show` is an invalid
   # instrument here: it prints the setting as applied without negotiating trust.
   #
-  # So a non-root build (`hbohlen` on the host, running this repo's `bin/devenv`
-  # once its `.devenv-toolchain` is built — there is no home-manager role to put
-  # a `devenv` on that account's PATH since ticket 08) can only substitute if the
+  # So a non-root build (`hbohlen` on the host, using Home Manager's pinned
+  # `devenv`) can only substitute if the
   # HOST declares the cache. `lib.mkAfter` APPENDS to nixpkgs' defaults rather
   # than replacing them, so `cache.nixos.org` and its key stay in the list — the
   # host keeps substituting its own closure.

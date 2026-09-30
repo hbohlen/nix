@@ -96,18 +96,15 @@ inputs:
       nixpkgs:
         follows: nixpkgs
 
-  # home-manager — REMOVED by ticket 08 (D48). The input existed only for
-  # `machines.netcup.home-manager` (hosts/netcup/operator.nix), and that role is
-  # gone: netcup's Machine is the irreducible six, and the packages the role
-  # carried (`gh`, `hermes-agent`, `herdr`) are shell-layer declarations now.
-  # `devenv.lock` was pruned to match: devenv's own resolution dropped the
-  # `home-manager` node and its root reference, and `git diff` shows no other pin
-  # moved.
+  # Required by machines.netcup.home-manager. Follow the root nixpkgs input.
+  home-manager:
+    url: github:nix-community/home-manager
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
 
-  # llm-agents — the agent tooling the SHELL LAYER declares (modules/agents.nix
-  # for the CLIs, modules/dsh.nix for dsh). Since ticket 08 it no longer serves
-  # the netcup machine layer: the host's home-manager role that consumed it for
-  # `hermes-agent` + `herdr` is gone, and those tools arrive through the shell.
+  # llm-agents provides the agent CLIs and dsh packages used by the shell layer.
+  # Netcup's Home Manager role installs only the pinned devenv CLI.
   # NOT in nixpkgs, and absent from both caches this host declared until now.
   #
   # IT DELIBERATELY DOES NOT FOLLOW nixpkgs (design D2). llm-agents.nix is only

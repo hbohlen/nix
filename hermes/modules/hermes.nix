@@ -41,6 +41,15 @@ in
   services.hermes-agent = {
     enable = true;
 
+    # `op` ON THE UNIT'S PATH, for the 1Password secret source in settings.nix
+    # 2.37. The service PATH is `unitPath` only (nix/homeManagerModules.nix:138)
+    # and holds the hermes package, bash, coreutils, git, and `extraPackages`
+    # (moduleCommon.nix `processPath`). `find_op` falls back to
+    # `shutil.which("op")` only when `secrets.onepassword.binary_path` is unset,
+    # and the live config's `/usr/bin/op` does not exist on netcup, so the
+    # binary is declared here instead of named by path.
+    extraPackages = [ pkgs._1password-cli ];
+
     # H4 — the repo contains the runtime home. No ~/.hermes symlink.
     inherit hermesHome;
 
