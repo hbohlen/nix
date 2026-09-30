@@ -34,9 +34,11 @@ cookie. Tailnet membership is the outer access boundary, as requested.
 The old `dsh-dev.hbohlen.space` service and source checkout have been removed;
 its route in contabo's system Caddyfile (the `@dshdev` handle, upstream
 `127.0.0.1:3081`) retired with it on 2026-09-30 — measured: nothing listens
-on `:3081` and the name now falls through the wildcard site unanswered. If a
-`dsh-dev` DNS record still exists in Cloudflare, retiring it is an operator
-step.
+on `:3081` and the name now falls through the wildcard site unanswered.
+Measured the same day against the Cloudflare zone: there is NO `dsh-dev`
+record — the name resolves only through the `*.hbohlen.space` wildcard
+(A → `100.115.197.61` via DoH), which `omni` and the gateway name depend on,
+so there is nothing DNS-side to retire.
 
 **Why the exact authority matters.** dsh's session cookie
 is authority-bound: the normalized `hostname:port` appears in the cookie name
